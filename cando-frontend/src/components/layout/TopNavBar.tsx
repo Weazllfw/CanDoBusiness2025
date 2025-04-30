@@ -8,18 +8,66 @@ import {
   BellIcon,
   UserCircleIcon,
   ChevronDownIcon,
+  BuildingOfficeIcon,
+  Cog6ToothIcon,
+  KeyIcon,
+  CreditCardIcon,
+  DocumentDuplicateIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+interface UserNavigationSection {
+  type: 'section';
+  name: string;
+  items: NavigationItem[];
+}
+
+interface UserNavigationDivider {
+  type: 'divider';
+}
+
+interface UserNavigationLink {
+  name: string;
+  href: string;
+}
+
+type UserNavigationItem = UserNavigationSection | UserNavigationDivider | UserNavigationLink;
+
+const navigation: NavigationItem[] = [
   { name: 'Home', href: '/dashboard', icon: HomeIcon },
   { name: 'RFQs', href: '/dashboard/rfq', icon: DocumentTextIcon },
+  { name: 'Business', href: '/dashboard/business', icon: BuildingOfficeIcon },
 ];
 
-const userNavigation = [
-  { name: 'Your Profile', href: '/dashboard/profile' },
-  { name: 'Settings', href: '/dashboard/settings' },
+const userNavigation: UserNavigationItem[] = [
+  { 
+    type: 'section',
+    name: 'Account Settings',
+    items: [
+      { name: 'Your Profile', href: '/dashboard/account/profile', icon: UserCircleIcon },
+      { name: 'Security', href: '/dashboard/account/security', icon: KeyIcon },
+      { name: 'Billing', href: '/dashboard/account/billing', icon: CreditCardIcon },
+      { name: 'Documents', href: '/dashboard/account/documents', icon: DocumentDuplicateIcon },
+    ]
+  },
+  { 
+    type: 'section',
+    name: 'Business Settings',
+    items: [
+      { name: 'Company Profile', href: '/dashboard/business/profile', icon: BuildingOfficeIcon },
+      { name: 'Team Members', href: '/dashboard/business/team', icon: UserGroupIcon },
+      { name: 'Preferences', href: '/dashboard/business/preferences', icon: Cog6ToothIcon },
+    ]
+  },
+  { type: 'divider' },
   { name: 'Sign out', href: '/auth/logout' },
 ];
 
@@ -76,22 +124,57 @@ export function TopNavBar() {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-              {userNavigation.map((item) => (
-                <Menu.Item key={item.name}>
-                  {({ active }) => (
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        active ? 'bg-gray-100' : '',
-                        'block px-4 py-2 text-sm text-gray-700'
-                      )}
-                    >
-                      {item.name}
-                    </Link>
-                  )}
-                </Menu.Item>
-              ))}
+            <Menu.Items className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+              {userNavigation.map((item, index) => {
+                // Handle divider
+                if ('type' in item && item.type === 'divider') {
+                  return <div key={index} className="my-1 border-t border-gray-200" />;
+                }
+
+                // Handle section
+                if ('type' in item && item.type === 'section') {
+                  return (
+                    <div key={item.name}>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-500">
+                        {item.name}
+                      </div>
+                      {item.items.map((subItem) => (
+                        <Menu.Item key={subItem.name}>
+                          {({ active }) => (
+                            <Link
+                              href={subItem.href}
+                              className={cn(
+                                active ? 'bg-gray-100' : '',
+                                'flex items-center px-4 py-2 text-sm text-gray-700'
+                              )}
+                            >
+                              <subItem.icon className="mr-3 h-5 w-5 text-gray-400" />
+                              {subItem.name}
+                            </Link>
+                          )}
+                        </Menu.Item>
+                      ))}
+                    </div>
+                  );
+                }
+
+                // Handle regular link
+                return (
+                  <Menu.Item key={item.name}>
+                    {({ active }) => (
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          active ? 'bg-gray-100' : '',
+                          'block px-4 py-2 text-sm text-gray-700'
+                        )}
+                      >
+                        {item.name}
+                      </Link>
+                    )}
+                  </Menu.Item>
+                );
+              })}
             </Menu.Items>
           </Transition>
         </Menu>
