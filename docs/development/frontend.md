@@ -60,15 +60,94 @@ The application uses Next.js App Router with the following route structure:
    - Wraps dashboard pages with DashboardLayout component
    - Provides navigation and header structure
 
+3. TopNavBar (`src/components/layout/TopNavBar.tsx`):
+   - Client-side component with responsive navigation
+   - Features:
+     - Brand logo and name
+     - Main navigation links (Home, RFQs)
+     - Notification center with counter
+     - User profile dropdown menu
+   
+   Navigation Structure:
+   - Main Navigation:
+     - Home: Dashboard overview
+     - RFQs: Request for Quotations section
+   - User Navigation:
+     - Profile settings
+     - Account settings
+     - Sign out option
+   
+   Components Used:
+   - Headless UI Menu for dropdown
+   - Heroicons for icons
+   - Next.js Link for navigation
+   
+   Responsive Design:
+   - Desktop: Full navigation with all items visible
+   - Mobile: Condensed navigation with essential items
+   
+   Implementation Notes:
+   - Uses Headless UI for accessible dropdowns
+   - Implements smooth transitions for menus
+   - Maintains consistent height (16 units)
+   - Integrates with DashboardLayout for full-page structure
+
 ## Components
 
 ### Layout Components
 
 1. DashboardLayout (`src/components/layout/DashboardLayout.tsx`):
-   - Responsive sidebar navigation
-   - Mobile-friendly with collapsible menu
-   - Header with navigation controls
-   - Main content area with proper spacing
+   - Client-side component (marked with 'use client' directive)
+   - Provides a responsive dashboard shell with:
+     - Full-height layout with flex structure
+     - Fixed-width sidebar (64 units wide)
+     - Collapsible mobile navigation
+     - Smooth transition animations
+   
+   Features:
+   - Responsive Design:
+     - Desktop: Static sidebar with full content width
+     - Mobile: Collapsible sidebar with overlay
+   - Interactive Elements:
+     - Toggle buttons for mobile menu
+     - Overlay backdrop for mobile view
+     - Smooth transitions for sidebar
+   
+   Props:
+   ```typescript
+   interface DashboardLayoutProps {
+     children: ReactNode;  // Main content to render
+   }
+   ```
+
+   State Management:
+   - Uses `useState` for sidebar visibility
+   - `sidebarOpen` controls mobile menu state
+   
+   CSS Classes:
+   - Uses Tailwind for responsive styling
+   - Key breakpoints:
+     - `lg:` for desktop layouts
+     - Default mobile-first approach
+   
+   Usage Example:
+   ```typescript
+   import { DashboardLayout } from '@/components/layout/DashboardLayout';
+   
+   export default function DashboardPage() {
+     return (
+       <DashboardLayout>
+         <div>Dashboard Content</div>
+       </DashboardLayout>
+     );
+   }
+   ```
+
+   Implementation Notes:
+   - Must be wrapped in a client component due to React hooks usage
+   - Uses HeroIcons for menu icons
+   - Implements z-index layering for proper overlay behavior
+   - Maintains consistent header height (16 units)
 
 ### Common Components
 

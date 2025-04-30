@@ -43,7 +43,7 @@ graph TD
 ### Component Structure
 
 ```
-src/
+cando-frontend/
 ├── app/
 │   ├── (auth)/
 │   │   ├── login/
@@ -51,18 +51,17 @@ src/
 │   ├── dashboard/
 │   ├── profile/
 │   └── settings/
-├── components/
-│   ├── common/
-│   │   ├── Button/
-│   │   ├── Card/
-│   │   └── Input/
-│   ├── layout/
-│   └── features/
-├── lib/
-│   ├── hooks/
-│   ├── utils/
-│   └── types/
-└── styles/
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   ├── layout/
+│   │   └── features/
+│   ├── lib/
+│   │   ├── hooks/
+│   │   ├── utils/
+│   │   └── types/
+│   └── styles/
+└── public/
 ```
 
 ## Backend Architecture
