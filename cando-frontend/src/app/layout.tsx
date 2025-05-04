@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { CompanyProvider } from '@/lib/contexts/CompanyContext'
 import { ToastProvider } from '@/components/common/Toast'
 import './globals.css'
 
@@ -18,9 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <ToastProvider>
-          {children}
-        </ToastProvider>
+        <CompanyProvider>
+          <ToastProvider>
+            <main className="min-h-screen bg-white">
+              {children}
+            </main>
+          </ToastProvider>
+        </CompanyProvider>
       </body>
     </html>
   )
