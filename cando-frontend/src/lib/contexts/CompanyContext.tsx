@@ -48,16 +48,32 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       
       if (data) {
         setCompanies(data)
-        // If there's no current company selected, select the primary one
+        
+        // If there's no current company selected, select the primary one or the first one
         if (!currentCompany) {
-          const primaryCompany = data.find(c => c.is_primary)
+          const primaryCompany = data.find(c => c.is_primary) || data[0]
           if (primaryCompany) {
             setCurrentCompanyState(primaryCompany)
+          }
+        } else {
+          // If there is a current company, make sure it still exists in the updated list
+          const existingCompany = data.find(c => c.id === currentCompany.id)
+          if (!existingCompany) {
+            const newCurrentCompany = data.find(c => c.is_primary) || data[0]
+            if (newCurrentCompany) {
+              setCurrentCompanyState(newCurrentCompany)
+            } else {
+              setCurrentCompanyState(null)
+            }
+          } else {
+            // Update the current company with latest data
+            setCurrentCompanyState(existingCompany)
           }
         }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch companies')
+      console.error('Error refreshing companies:', err)
     } finally {
       setIsLoading(false)
     }
@@ -82,6 +98,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to set current company')
+      console.error('Error setting current company:', err)
     } finally {
       setIsLoading(false)
     }
@@ -100,6 +117,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       return data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create company')
+      console.error('Error creating company:', err)
       throw err
     } finally {
       setIsLoading(false)
@@ -112,6 +130,8 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       if (event === 'SIGNED_OUT') {
         setCurrentCompanyState(null)
         setCompanies([])
+      } else if (event === 'SIGNED_IN') {
+        refreshCompanies()
       }
     })
 

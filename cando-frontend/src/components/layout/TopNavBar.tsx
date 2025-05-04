@@ -1,18 +1,22 @@
+'use client'
+
 import { Fragment } from 'react'
 import Link from 'next/link'
 import { Menu, Transition } from '@headlessui/react'
-import { UserCircleIcon } from '@heroicons/react/24/outline'
+import { UserCircleIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
 import { CompanySelector } from '@/components/common/CompanySelector'
 import { signOut } from '@/lib/auth'
 import { cn } from '@/lib/utils'
+import { useCompany } from '@/lib/contexts/CompanyContext'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard' },
-  { name: 'Companies', href: '/dashboard/companies' },
-  { name: 'Settings', href: '/dashboard/settings' },
+  { name: 'Directory', href: '/dashboard/directory' },
 ]
 
 export function TopNavBar() {
+  const { currentCompany } = useCompany()
+  
   const handleSignOut = async () => {
     await signOut()
   }
@@ -25,11 +29,15 @@ export function TopNavBar() {
             <div className="flex flex-shrink-0 items-center">
               <Link href="/dashboard">
                 <span className="sr-only">Your Company</span>
-                <img
-                  className="h-8 w-auto"
-                  src="/logo.svg"
-                  alt="Company Logo"
-                />
+                {currentCompany?.logo_url ? (
+                  <img
+                    className="h-8 w-8 rounded-full"
+                    src={currentCompany.logo_url}
+                    alt={currentCompany.name}
+                  />
+                ) : (
+                  <BuildingOfficeIcon className="h-8 w-8 text-gray-400" aria-hidden="true" />
+                )}
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">

@@ -4,9 +4,9 @@ import { COMPANY_ROLES } from '../types/company'
 
 // Company validation schemas
 export const companySchema = z.object({
-  name: z.string().min(1, 'Company name is required').max(100),
+  name: z.string().min(2).max(100),
   trading_name: z.string().max(100).nullable().optional(),
-  registration_number: z.string().max(50).nullable().optional(),
+  business_number: z.string().max(50).nullable().optional(),
   tax_number: z.string().max(50).nullable().optional(),
   email: z.string().email().nullable().optional(),
   phone: z.string().max(20).nullable().optional(),

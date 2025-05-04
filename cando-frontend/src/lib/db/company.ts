@@ -42,14 +42,18 @@ export async function getCompanies() {
       throw new RateLimitError()
     }
 
-    // Fetch companies the user is associated with
+    // Fetch companies with all necessary data
     const { data, error } = await supabase
       .from('companies')
       .select(`
         *,
-        company_users!inner(user_id, role, is_primary)
+        company_users!inner(
+          user_id,
+          role,
+          is_primary
+        )
       `)
-      .eq('company_users.user_id', userId) // Filter companies where the current user is a member
+      .eq('company_users.user_id', userId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -58,50 +62,46 @@ export async function getCompanies() {
     }
 
     if (!data) {
-        return { data: [], error: null } // Return empty array if no data
+      return { data: [], error: null }
     }
-    
+
     // Map the data correctly to CompanyWithMeta
     const companies: CompanyWithMeta[] = data.map(company => {
-        // Find the specific company_user entry for the current user
-        // Explicitly type `cu` based on the select query
-        const currentUserMembership = company.company_users.find((cu: { user_id: string; role: string; is_primary: boolean }) => cu.user_id === userId);
-        
-        if (!currentUserMembership) {
-            // This case should ideally not happen due to the .eq filter, 
-            // but good for robustness or complex RLS scenarios.
-            console.warn(`No membership found for user ${userId} in company ${company.id}, skipping map.`);
-            return null; // Or handle as appropriate, maybe filter out later
-        }
+      const currentUserMembership = company.company_users.find(
+        (cu: { user_id: string; role: string; is_primary: boolean }) => 
+        cu.user_id === userId
+      )
 
-        // Explicitly map all fields from the base company record and the membership record
-        // This ensures all CompanyWithMeta fields are present
-        return {
-            id: company.id,
-            name: company.name,
-            trading_name: company.trading_name,
-            registration_number: company.registration_number,
-            tax_number: company.tax_number,
-            email: company.email,
-            phone: company.phone,
-            website: company.website,
-            address: company.address,
-            industry_tags: company.industry_tags || [], // Ensure array type
-            capability_tags: company.capability_tags || [], // Ensure array type
-            region_tags: company.region_tags || [], // Ensure array type
-            verification_status: company.verification_status,
-            verification_date: company.verification_date,
-            subscription_tier: company.subscription_tier,
-            subscription_status: company.subscription_status,
-            employee_count_range: company.employee_count_range,
-            founding_year: company.founding_year,
-            created_at: company.created_at,
-            updated_at: company.updated_at,
-            // Fields from the join specifically for the current user
-            is_primary: currentUserMembership.is_primary,
-            role: currentUserMembership.role as CompanyRole // Cast role to the specific type
-        }
-    }).filter(c => c !== null) as CompanyWithMeta[]; // Filter out any nulls from mapping
+      if (!currentUserMembership) {
+        console.warn(`No membership found for user ${userId} in company ${company.id}`)
+        return null
+      }
+
+      return {
+        id: company.id,
+        name: company.name,
+        trading_name: company.trading_name,
+        business_number: company.business_number,
+        tax_number: company.tax_number,
+        email: company.email,
+        phone: company.phone,
+        website: company.website,
+        address: company.address,
+        industry_tags: company.industry_tags || [],
+        capability_tags: company.capability_tags || [],
+        region_tags: company.region_tags || [],
+        verification_status: company.is_verified ? 'verified' : 'unverified',
+        verification_date: company.verified_at,
+        subscription_tier: company.subscription_tier || 'free',
+        subscription_status: company.subscription_status || 'active',
+        employee_count_range: company.employee_count_range,
+        founding_year: company.founding_year,
+        created_at: company.created_at,
+        updated_at: company.updated_at,
+        is_primary: currentUserMembership.is_primary,
+        role: currentUserMembership.role as CompanyRole
+      }
+    }).filter(c => c !== null) as CompanyWithMeta[]
 
     cache.set(cacheKey, companies, CACHE_TTL)
     return { data: companies, error: null }
@@ -138,7 +138,7 @@ export async function createCompany(companyData: CompanyInsert) {
       .rpc('create_company_with_owner', {
         company_name: validatedData.name,
         company_trading_name: validatedData.trading_name || null,
-        company_registration_number: validatedData.registration_number || null,
+        company_business_number: validatedData.business_number || null,
         company_tax_number: validatedData.tax_number || null,
         company_email: validatedData.email || null,
         company_phone: validatedData.phone || null,
@@ -219,21 +219,30 @@ export async function updateCompany(id: string, updates: CompanyUpdate) {
   }
 }
 
-export async function deleteCompany(id: string) {
-  try {
-    const { error } = await supabase
-      .from('companies')
-      .delete()
-      .eq('id', id)
+export async function deleteCompany(companyId: string) {
+  const supabase = createClientComponentClient<Database>();
+  
+  // First delete all company verifications
+  const { error: verificationError } = await supabase
+    .from('company_verifications')
+    .delete()
+    .eq('company_id', companyId);
 
-    if (error) throw error
-
-    return { error: null }
-  } catch (error) {
-    return { 
-      error: error instanceof Error ? error.message : 'Failed to delete company' 
-    }
+  if (verificationError) {
+    throw verificationError;
   }
+
+  // Then delete the company
+  const { error } = await supabase
+    .from('companies')
+    .delete()
+    .eq('id', companyId);
+
+  if (error) {
+    throw error;
+  }
+
+  return { error: null };
 }
 
 export interface PaginationParams {

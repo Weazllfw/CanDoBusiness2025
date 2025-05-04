@@ -16,9 +16,9 @@ export function CompanyForm({ company }: CompanyFormProps) {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [formData, setFormData] = useState({
-    name: company.name,
+    name: company.name || '',
     trading_name: company.trading_name || '',
-    registration_number: company.registration_number || '',
+    business_number: company.business_number || '',
     tax_number: company.tax_number || '',
     email: company.email || '',
     phone: company.phone || '',
@@ -101,16 +101,16 @@ export function CompanyForm({ company }: CompanyFormProps) {
         </div>
 
         <div>
-          <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700">
-            Registration Number
+          <label htmlFor="business_number" className="block text-sm font-medium text-gray-700">
+            Business Number
           </label>
           <input
             type="text"
-            name="registration_number"
-            id="registration_number"
-            value={formData.registration_number}
+            name="business_number"
+            id="business_number"
+            value={formData.business_number}
             onChange={handleInputChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           />
         </div>
 
