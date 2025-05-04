@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/lib/types/database.types'
+import { PlusIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -14,10 +16,15 @@ export default function SettingsPage() {
     newPassword: '',
     confirmPassword: '',
   })
+  const router = useRouter()
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleCreateNewCompany = () => {
+    router.push('/dashboard/companies/new')
   }
 
   const handleUpdateEmail = async (e: React.FormEvent) => {
@@ -211,6 +218,32 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Company Management Section */}
+        <div className="grid grid-cols-1 gap-x-8 gap-y-8 pt-10 md:grid-cols-3">
+           <div className="px-4 sm:px-0">
+             <h2 className="text-base font-semibold leading-7 text-gray-900">
+               Company Management
+             </h2>
+             <p className="mt-1 text-sm leading-6 text-gray-600">
+               Create or manage your company profiles.
+             </p>
+           </div>
+
+           <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl md:col-span-2">
+             <div className="px-4 py-6 sm:p-8">
+               <button
+                 type="button"
+                 onClick={handleCreateNewCompany}
+                 className="inline-flex items-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+               >
+                 <PlusIcon className="-ml-0.5 h-5 w-5 text-gray-400" aria-hidden="true" />
+                 Create New Company
+               </button>
+             </div>
+           </div>
+         </div>
+
       </div>
     </DashboardLayout>
   )

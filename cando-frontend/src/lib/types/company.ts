@@ -14,10 +14,17 @@ export const COMPANY_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 export type CompanyRole = typeof COMPANY_ROLES[number]
 
 // Extended types with metadata
-export interface CompanyWithMeta extends Omit<Company, 'trading_name'> {
-  is_primary: boolean
-  role: CompanyRole
-  trading_name?: string | null
+export interface CompanyWithMeta extends Company {
+  is_primary?: boolean
+  industry_tags: string[]
+  capability_tags: string[]
+  region_tags: string[]
+  verification_status?: 'pending' | 'verified' | 'rejected'
+  verification_date?: string
+  subscription_tier?: 'free' | 'basic' | 'premium' | 'enterprise'
+  subscription_status?: 'active' | 'inactive' | 'cancelled'
+  employee_count_range?: string
+  founding_year?: number
 }
 
 export interface CompanyUserWithProfile extends CompanyUser {

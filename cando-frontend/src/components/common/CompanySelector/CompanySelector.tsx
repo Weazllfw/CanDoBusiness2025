@@ -28,6 +28,10 @@ export function CompanySelector() {
     )
   }
 
+  const displayCompanyName = isLoading
+    ? "Loading..."
+    : currentCompany?.name || "Select a company"
+
   return (
     <Menu as="div" className="relative inline-block text-left">
       <div>
@@ -47,11 +51,7 @@ export function CompanySelector() {
             )}
             aria-hidden="true"
           />
-          <span className="truncate">
-            {isLoading
-              ? "Loading..."
-              : currentCompany?.name || "Select a company"}
-          </span>
+          <span className="truncate">{displayCompanyName}</span>
           <ChevronDownIcon
             className={cn(
               "h-5 w-5",
@@ -73,9 +73,16 @@ export function CompanySelector() {
       >
         <Menu.Items className="absolute left-0 z-10 mt-2 w-72 origin-top-left rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
           <div className="py-1">
+            {companies.length > 0 && (
             <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Your companies
             </div>
+            )}
+            {companies.length === 0 && !isLoading && (
+               <div className="px-3 py-2 text-sm text-gray-500">
+                 No companies found.
+               </div>
+             )}
             {companies.map((company) => (
               <Menu.Item key={company.id}>
                 {({ active }) => (
@@ -93,7 +100,7 @@ export function CompanySelector() {
                         company.id === currentCompany?.id ? 'text-blue-500' : 'text-gray-400'
                       )}
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 truncate">
                       <p className={cn(
                         'text-sm font-semibold leading-6',
                         company.id === currentCompany?.id ? 'text-blue-600' : 'text-gray-900'
@@ -119,7 +126,7 @@ export function CompanySelector() {
               <div className="absolute inset-0 flex items-center px-3" aria-hidden="true">
                 <div className="w-full border-t border-gray-200" />
               </div>
-              <div className="relative flex justify-center">
+              <div className="relative flex justify-center pt-2">
                 <button
                   onClick={handleCreateNew}
                   className="inline-flex items-center gap-x-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"

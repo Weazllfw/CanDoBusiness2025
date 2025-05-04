@@ -23,9 +23,9 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 const RATE_LIMIT = 100 // requests per minute
 
 async function getCurrentUserId(): Promise<string> {
-  const userId = (await supabase.auth.getUser()).data.user?.id
-  if (!userId) throw new Error('No authenticated user')
-  return userId
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) throw new Error('No authenticated user')
+  return data.user.id
 }
 
 export async function getCompanies() {
@@ -33,7 +33,7 @@ export async function getCompanies() {
     const userId = await getCurrentUserId()
     const cacheKey = Cache.generateKey('companies', { userId })
     const cachedData = cache.get<CompanyWithMeta[]>(cacheKey)
-    
+
     if (cachedData) {
       return { data: cachedData, error: null }
     }
@@ -42,35 +42,82 @@ export async function getCompanies() {
       throw new RateLimitError()
     }
 
+    // Fetch companies the user is associated with
     const { data, error } = await supabase
       .from('companies')
       .select(`
         *,
-        company_users!inner(role, is_primary)
+        company_users!inner(user_id, role, is_primary)
       `)
+      .eq('company_users.user_id', userId) // Filter companies where the current user is a member
       .order('created_at', { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error("Supabase fetch error:", error)
+      throw new Error(`Failed to fetch companies from DB: ${error.message}`)
+    }
 
-    const companies: CompanyWithMeta[] = data.map(company => ({
-      ...company,
-      is_primary: company.company_users[0].is_primary,
-      role: company.company_users[0].role as CompanyRole
-    }))
+    if (!data) {
+        return { data: [], error: null } // Return empty array if no data
+    }
+    
+    // Map the data correctly to CompanyWithMeta
+    const companies: CompanyWithMeta[] = data.map(company => {
+        // Find the specific company_user entry for the current user
+        // Explicitly type `cu` based on the select query
+        const currentUserMembership = company.company_users.find((cu: { user_id: string; role: string; is_primary: boolean }) => cu.user_id === userId);
+        
+        if (!currentUserMembership) {
+            // This case should ideally not happen due to the .eq filter, 
+            // but good for robustness or complex RLS scenarios.
+            console.warn(`No membership found for user ${userId} in company ${company.id}, skipping map.`);
+            return null; // Or handle as appropriate, maybe filter out later
+        }
+
+        // Explicitly map all fields from the base company record and the membership record
+        // This ensures all CompanyWithMeta fields are present
+        return {
+            id: company.id,
+            name: company.name,
+            trading_name: company.trading_name,
+            registration_number: company.registration_number,
+            tax_number: company.tax_number,
+            email: company.email,
+            phone: company.phone,
+            website: company.website,
+            address: company.address,
+            industry_tags: company.industry_tags || [], // Ensure array type
+            capability_tags: company.capability_tags || [], // Ensure array type
+            region_tags: company.region_tags || [], // Ensure array type
+            verification_status: company.verification_status,
+            verification_date: company.verification_date,
+            subscription_tier: company.subscription_tier,
+            subscription_status: company.subscription_status,
+            employee_count_range: company.employee_count_range,
+            founding_year: company.founding_year,
+            created_at: company.created_at,
+            updated_at: company.updated_at,
+            // Fields from the join specifically for the current user
+            is_primary: currentUserMembership.is_primary,
+            role: currentUserMembership.role as CompanyRole // Cast role to the specific type
+        }
+    }).filter(c => c !== null) as CompanyWithMeta[]; // Filter out any nulls from mapping
 
     cache.set(cacheKey, companies, CACHE_TTL)
     return { data: companies, error: null }
+
   } catch (error) {
+    console.error("Error in getCompanies:", error)
     if (error instanceof RateLimitError) {
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: error.message,
-        resetTime: error.resetTime 
+        resetTime: error.resetTime
       }
     }
-    return { 
-      data: null, 
-      error: error instanceof Error ? error.message : 'Failed to fetch companies' 
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Failed to fetch companies'
     }
   }
 }
@@ -86,27 +133,31 @@ export async function createCompany(companyData: CompanyInsert) {
     // Validate company data
     const validatedData = validateCompanyData(companyData)
 
-    // Start a transaction
-    const { data: company, error: createError } = await supabase
-      .from('companies')
-      .insert(validatedData)
-      .select()
-      .single()
-
-    if (createError) throw createError
-    if (!company) throw new Error('No company data returned')
-
-    // Create company_user relationship
-    const { error: relationError } = await supabase
-      .from('company_users')
-      .insert({
-        company_id: company.id,
-        user_id: userId,
-        role: 'owner',
-        is_primary: true
+    // Call the create_company_with_owner function
+    const { data: companyId, error: createError } = await supabase
+      .rpc('create_company_with_owner', {
+        company_name: validatedData.name,
+        company_trading_name: validatedData.trading_name || null,
+        company_registration_number: validatedData.registration_number || null,
+        company_tax_number: validatedData.tax_number || null,
+        company_email: validatedData.email || null,
+        company_phone: validatedData.phone || null,
+        company_website: validatedData.website || null,
+        company_address: validatedData.address || {}
       })
 
-    if (relationError) throw relationError
+    if (createError) throw createError
+    if (!companyId) throw new Error('No company ID returned')
+
+    // Fetch the created company
+    const { data: company, error: fetchError } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single()
+
+    if (fetchError) throw fetchError
+    if (!company) throw new Error('Created company not found')
 
     // Clear companies cache
     const cacheKey = Cache.generateKey('companies', { userId })

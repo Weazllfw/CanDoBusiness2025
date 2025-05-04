@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useCompany } from '@/lib/contexts/CompanyContext'
 import type { CompanyWithMeta } from '@/lib/types/company'
 import { updateCompany } from '@/lib/db/company'
+import { TagSelector } from '@/components/common/TagSelector/TagSelector'
 
 interface CompanyFormProps {
   company: CompanyWithMeta
@@ -22,12 +23,19 @@ export function CompanyForm({ company }: CompanyFormProps) {
     email: company.email || '',
     phone: company.phone || '',
     website: company.website || '',
-    address: company.address || {}
+    address: company.address || {},
+    industry_tags: company.industry_tags || [],
+    capability_tags: company.capability_tags || [],
+    region_tags: company.region_tags || []
   })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleTagChange = (category: 'industry_tags' | 'capability_tags' | 'region_tags') => (tags: string[]) => {
+    setFormData(prev => ({ ...prev, [category]: tags }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -159,6 +167,44 @@ export function CompanyForm({ company }: CompanyFormProps) {
             value={formData.website}
             onChange={handleInputChange}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Industry Tags
+          </label>
+          <TagSelector
+            category="industry"
+            selectedTags={formData.industry_tags}
+            onChange={handleTagChange('industry_tags')}
+            maxTags={5}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Capability Tags
+          </label>
+          <TagSelector
+            category="capability"
+            selectedTags={formData.capability_tags}
+            onChange={handleTagChange('capability_tags')}
+            maxTags={10}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Region Tags
+          </label>
+          <TagSelector
+            category="region"
+            selectedTags={formData.region_tags}
+            onChange={handleTagChange('region_tags')}
+            maxTags={3}
           />
         </div>
       </div>
