@@ -3,18 +3,51 @@
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout'
 import { MagnifyingGlassIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
-import type { CompanyWithMeta } from '@/lib/types/company'
-import { useCompany } from '@/lib/contexts/CompanyContext'
+import { ShieldCheckIcon } from '@heroicons/react/24/solid'
+import { usePublicCompanies } from '@/lib/hooks/usePublicCompanies'
+import { CompanyDetailsModal } from '@/components/common/CompanyDetailsModal'
+import { useToast } from '@/components/common/Toast'
 import Link from 'next/link'
+import type { Database } from '@/lib/types/database.types'
+
+type PublicCompany = Database['public']['Views']['public_companies']['Row']
 
 export default function CompanyDirectoryPage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const { companies, isLoading } = useCompany()
+  const { companies, isLoading, error } = usePublicCompanies()
+  const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const { showToast } = useToast()
 
-  // Filter companies based on search query only
+  // Filter companies based on search query
   const filteredCompanies = companies.filter(company => 
-    !searchQuery || company.name.toLowerCase().includes(searchQuery.toLowerCase())
+    !searchQuery || 
+    company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (company.trading_name && company.trading_name.toLowerCase().includes(searchQuery.toLowerCase()))
   )
+
+  const handleCompanyClick = (company: PublicCompany) => {
+    setSelectedCompany(company)
+    setIsModalOpen(true)
+  }
+
+  const handleConnect = (companyId: string) => {
+    // Placeholder for connect functionality
+    showToast({
+      title: 'Coming Soon',
+      message: 'The ability to connect with companies will be available soon.',
+      type: 'info'
+    })
+  }
+
+  const handleMessage = (companyId: string) => {
+    // Placeholder for message functionality
+    showToast({
+      title: 'Coming Soon',
+      message: 'The messaging feature will be available soon.',
+      type: 'info'
+    })
+  }
 
   return (
     <DashboardLayout>
@@ -47,12 +80,26 @@ export default function CompanyDirectoryPage() {
           </div>
         </div>
 
+        {/* Error State */}
+        {error && (
+          <div className="rounded-md bg-red-50 p-4">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error loading companies</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Company List */}
         {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="animate-pulse">
-                <div className="h-24 bg-gray-100 rounded-lg" />
+                <div className="h-48 bg-gray-200 rounded-lg" />
               </div>
             ))}
           </div>
@@ -69,47 +116,41 @@ export default function CompanyDirectoryPage() {
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filteredCompanies.map((company) => (
-              <Link
+              <button
                 key={company.id}
-                href={`/dashboard/companies/${company.id}`}
-                className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
+                onClick={() => handleCompanyClick(company)}
+                className="text-left group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white hover:shadow-lg transition-shadow duration-200"
               >
-                <div className="flex flex-1 flex-col space-y-2 p-4">
+                <div className="flex flex-1 flex-col space-y-4 p-6">
                   <div className="flex items-center space-x-3">
-                    {company.logo_url ? (
-                      <img
-                        src={company.logo_url}
-                        alt={company.name}
-                        className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-200"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-200 flex items-center justify-center">
-                        <BuildingOfficeIcon className="h-6 w-6 text-gray-400" />
-                      </div>
-                    )}
+                    <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-200 flex items-center justify-center">
+                      <BuildingOfficeIcon className="h-6 w-6 text-gray-400" />
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-gray-900 line-clamp-1">
                         {company.name}
+                        {company.is_verified && (
+                          <ShieldCheckIcon className="inline-block ml-1 h-4 w-4 text-green-500" aria-label="Verified" />
+                        )}
                       </p>
                       {company.trading_name && (
-                        <p className="text-sm text-gray-500 truncate">
+                        <p className="text-sm text-gray-500 line-clamp-1">
                           Trading as {company.trading_name}
                         </p>
                       )}
-                      {company.verification_status === 'verified' && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                          Verified
-                        </span>
-                      )}
                     </div>
                   </div>
-                  {company.description && (
-                    <p className="text-sm text-gray-500 line-clamp-2">
-                      {company.description}
+
+                  {/* Location */}
+                  {(company.city || company.province) && (
+                    <p className="text-sm text-gray-500">
+                      {[company.city, company.province].filter(Boolean).join(', ')}
                     </p>
                   )}
+
+                  {/* Tags */}
                   {company.industry_tags && company.industry_tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div className="flex flex-wrap gap-1">
                       {company.industry_tags.slice(0, 3).map((tag) => (
                         <span
                           key={tag}
@@ -126,10 +167,19 @@ export default function CompanyDirectoryPage() {
                     </div>
                   )}
                 </div>
-              </Link>
+              </button>
             ))}
           </div>
         )}
+
+        {/* Company Details Modal */}
+        <CompanyDetailsModal
+          company={selectedCompany}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onConnect={handleConnect}
+          onMessage={handleMessage}
+        />
       </div>
     </DashboardLayout>
   )

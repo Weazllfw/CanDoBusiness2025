@@ -9,6 +9,12 @@ export async function middleware(request: NextRequest) {
   // Refresh session if expired
   const { data: { session } } = await supabase.auth.getSession()
 
+  // Allow public access to directory and company pages
+  if (request.nextUrl.pathname === '/directory' || 
+      request.nextUrl.pathname.startsWith('/companies/')) {
+    return res
+  }
+
   // If user is not signed in and the current path is not /auth/*, redirect to /auth/login
   if (!session && !request.nextUrl.pathname.startsWith('/auth/')) {
     const redirectUrl = request.nextUrl.clone()

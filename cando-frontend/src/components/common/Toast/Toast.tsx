@@ -1,98 +1,112 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import {
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  InformationCircleIcon,
-  ExclamationTriangleIcon,
-} from '@heroicons/react/24/solid';
+import { Fragment, createContext, useContext, useState } from 'react'
+import { Transition } from '@headlessui/react'
+import { CheckCircleIcon, XCircleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon } from '@heroicons/react/20/solid'
+
+type ToastType = 'success' | 'error' | 'info'
 
 interface ToastProps {
-  id: string;
-  title: string;
-  description?: string;
-  type?: 'success' | 'error' | 'warning' | 'info';
-  duration?: number;
-  onClose: (id: string) => void;
+  title: string
+  message: string
+  type: ToastType
 }
 
-const icons = {
-  success: CheckCircleIcon,
-  error: ExclamationCircleIcon,
-  warning: ExclamationTriangleIcon,
-  info: InformationCircleIcon,
-};
+interface ToastContextType {
+  showToast: (toast: ToastProps) => void
+}
 
-const colors = {
-  success: 'bg-green-50 text-green-800',
-  error: 'bg-red-50 text-red-800',
-  warning: 'bg-yellow-50 text-yellow-800',
-  info: 'bg-blue-50 text-blue-800',
-};
+const ToastContext = createContext<ToastContextType>({
+  showToast: () => {},
+})
 
-const iconColors = {
-  success: 'text-green-400',
-  error: 'text-red-400',
-  warning: 'text-yellow-400',
-  info: 'text-blue-400',
-};
+export function useToast() {
+  return useContext(ToastContext)
+}
 
-export function Toast({
-  id,
-  title,
-  description,
-  type = 'info',
-  duration = 5000,
-  onClose,
-}: ToastProps) {
-  const [isVisible, setIsVisible] = useState(true);
-  const Icon = icons[type];
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toast, setToast] = useState<ToastProps | null>(null)
+  const [show, setShow] = useState(false)
 
-  useEffect(() => {
-    if (duration > 0) {
-      const timer = setTimeout(() => {
-        setIsVisible(false);
-        setTimeout(() => onClose(id), 300); // Allow time for exit animation
-      }, duration);
+  const showToast = (newToast: ToastProps) => {
+    setToast(newToast)
+    setShow(true)
+    setTimeout(() => setShow(false), 5000) // Hide after 5 seconds
+  }
 
-      return () => clearTimeout(timer);
+  const getIcon = () => {
+    switch (toast?.type) {
+      case 'success':
+        return <CheckCircleIcon className="h-6 w-6 text-green-400" aria-hidden="true" />
+      case 'error':
+        return <XCircleIcon className="h-6 w-6 text-red-400" aria-hidden="true" />
+      case 'info':
+        return <InformationCircleIcon className="h-6 w-6 text-blue-400" aria-hidden="true" />
+      default:
+        return null
     }
-  }, [duration, id, onClose]);
+  }
 
-  if (!isVisible) return null;
+  const getBgColor = () => {
+    switch (toast?.type) {
+      case 'success':
+        return 'bg-green-50'
+      case 'error':
+        return 'bg-red-50'
+      case 'info':
+        return 'bg-blue-50'
+      default:
+        return 'bg-gray-50'
+    }
+  }
 
   return (
-    <div
-      className={`pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 ${colors[type]} transform transition-all duration-300 ease-in-out ${
-        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
-      }`}
-    >
-      <div className="p-4">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <Icon className={`h-6 w-6 ${iconColors[type]}`} aria-hidden="true" />
-          </div>
-          <div className="ml-3 w-0 flex-1 pt-0.5">
-            <p className="text-sm font-medium">{title}</p>
-            {description && <p className="mt-1 text-sm opacity-90">{description}</p>}
-          </div>
-          <div className="ml-4 flex flex-shrink-0">
-            <button
-              type="button"
-              className={`inline-flex rounded-md ${colors[type]} hover:opacity-75 focus:outline-none focus:ring-2 focus:ring-offset-2`}
-              onClick={() => {
-                setIsVisible(false);
-                setTimeout(() => onClose(id), 300);
-              }}
-            >
-              <span className="sr-only">Close</span>
-              <XMarkIcon className="h-5 w-5" aria-hidden="true" />
-            </button>
-          </div>
+    <ToastContext.Provider value={{ showToast }}>
+      {children}
+      {/* Global notification live region */}
+      <div
+        aria-live="assertive"
+        className="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-50"
+      >
+        <div className="flex w-full flex-col items-center space-y-4 sm:items-end">
+          {/* Notification panel */}
+          <Transition
+            show={show}
+            as={Fragment}
+            enter="transform ease-out duration-300 transition"
+            enterFrom="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+            enterTo="translate-y-0 opacity-100 sm:translate-x-0"
+            leave="transition ease-in duration-100"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className={`pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 ${getBgColor()}`}>
+              <div className="p-4">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    {getIcon()}
+                  </div>
+                  <div className="ml-3 w-0 flex-1 pt-0.5">
+                    <p className="text-sm font-medium text-gray-900">{toast?.title}</p>
+                    <p className="mt-1 text-sm text-gray-500">{toast?.message}</p>
+                  </div>
+                  <div className="ml-4 flex flex-shrink-0">
+                    <button
+                      type="button"
+                      className="inline-flex rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      onClick={() => setShow(false)}
+                    >
+                      <span className="sr-only">Close</span>
+                      <XMarkIcon className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Transition>
         </div>
       </div>
-    </div>
-  );
+    </ToastContext.Provider>
+  )
 } 
