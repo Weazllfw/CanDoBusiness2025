@@ -2,37 +2,44 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req: request, res })
+// These routes don't require authentication
+const publicRoutes = [
+  '/',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/verify-email',
+  '/auth/reset-password',
+  '/privacy',
+  '/terms'
+]
 
-  // Refresh session if expired
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req, res })
   const { data: { session } } = await supabase.auth.getSession()
 
-  // Allow public access to directory and company pages
-  if (request.nextUrl.pathname === '/directory' || 
-      request.nextUrl.pathname.startsWith('/companies/')) {
-    return res
-  }
+  const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
+  const isAuthRoute = req.nextUrl.pathname.startsWith('/auth/')
 
-  // If user is not signed in and the current path is not /auth/*, redirect to /auth/login
-  if (!session && !request.nextUrl.pathname.startsWith('/auth/')) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/auth/login'
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // If user is signed in and the current path is /auth/*, redirect to /dashboard
-  if (session && request.nextUrl.pathname.startsWith('/auth/')) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/dashboard'
-    return NextResponse.redirect(redirectUrl)
+  // Handle authentication
+  if (!session) {
+    // If not authenticated and trying to access protected route, redirect to login
+    if (!isPublicRoute) {
+      const redirectUrl = new URL('/auth/login', req.url)
+      redirectUrl.searchParams.set('redirect', req.url)
+      return NextResponse.redirect(redirectUrl)
+    }
+  } else {
+    // If authenticated and trying to access auth routes, redirect to feed
+    if (isAuthRoute) {
+      return NextResponse.redirect(new URL('/feed', req.url))
+    }
   }
 
   return res
 }
 
+// Configure which routes to run the middleware on
 export const config = {
   matcher: [
     /*

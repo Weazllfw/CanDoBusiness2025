@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CanDo Business Network - Frontend
+
+A modern Canadian B2B networking and supply chain matchmaking platform built with Next.js and Supabase.
+
+## Features
+
+- Social Feed for business updates and RFQs
+- Direct messaging between businesses
+- Company profiles and management
+- Multi-tenant support for managing multiple companies
+- Modern and intuitive interface
+
+## Tech Stack
+
+- Next.js 14 with App Router
+- TypeScript
+- Tailwind CSS
+- Supabase for backend and authentication
+- React Hook Form for form management
+- Zod for validation
 
 ## Getting Started
 
-First, run the development server:
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+3. Create a `.env.local` file with the following variables:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Project Structure
+
+```
+src/
+  ├── app/                # Next.js App Router pages
+  │   ├── auth/          # Authentication pages
+  │   ├── company/       # Company management
+  │   ├── feed/          # Social feed and RFQs
+  │   └── messages/      # Messaging system
+  ├── components/        # Reusable React components
+  ├── lib/              # Utility functions and configurations
+  ├── types/            # TypeScript type definitions
+  └── utils/            # Helper functions
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Development Guidelines
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Use TypeScript for all new files
+- Follow the existing component structure
+- Use Tailwind CSS for styling
+- Implement proper error handling
+- Write meaningful commit messages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Setup
 
-## Learn More
+The application requires a Supabase project with the following tables:
+- companies
+- posts
+- messages
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Refer to the database schema in `src/types/supabase.ts` for the complete structure. 

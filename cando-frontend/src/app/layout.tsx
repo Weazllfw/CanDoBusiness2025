@@ -1,14 +1,13 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import { CompanyProvider } from '@/lib/contexts/CompanyContext'
-import { ToastProvider } from '@/components/common/Toast'
 import './globals.css'
+import { Inter } from 'next/font/google'
+import LayoutWrapper from '@/components/layout/LayoutWrapper'
+import { Metadata } from 'next'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'CanDo Business',
-  description: 'Connect and grow with businesses across Canada',
+  title: 'CanDo Business Network',
+  description: 'Connect and grow your business with CanDo',
 }
 
 export default function RootLayout({
@@ -17,15 +16,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <CompanyProvider>
-          <ToastProvider>
-            <main className="min-h-screen bg-white">
-              {children}
-            </main>
-          </ToastProvider>
-        </CompanyProvider>
+    <html lang="en" className="h-full">
+      <body className={`${inter.className} h-full antialiased`}>
+        <LayoutWrapper>
+          {children}
+        </LayoutWrapper>
       </body>
     </html>
   )
