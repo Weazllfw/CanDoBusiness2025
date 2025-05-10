@@ -1,5 +1,6 @@
 import { getUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import CompanyVerificationTable from '@/components/admin/CompanyVerificationTable';
 
 // Define the list of admin emails. 
 // For now, this matches the system user email you configured.
@@ -56,6 +57,12 @@ export default async function AdminPage() {
       {/* - User management table */}
       {/* - Message moderation tools */}
       {/* - System configuration settings */}
+
+      {/* Company Verification Section */}
+      <section className="mt-12">
+        <CompanyVerificationTable />
+      </section>
+
     </div>
   );
 } 
