@@ -1,0 +1,13 @@
+{
+  "name": "cando-supabase-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for CanDo Business 2025 Supabase setup.",
+  "main": "setup-admin.js",
+  "type": "module",
+  "scripts": {
+    "setup:admin": "node setup-admin.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0"
+  }
+} 

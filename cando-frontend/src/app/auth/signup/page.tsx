@@ -22,17 +22,19 @@ export default function SignUpPage() {
 
     try {
       // Sign up the user
-      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpResponse, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name,
-          },
-        },
+        // options: { // Temporarily remove this to simplify and handle profile insertion manually
+        //   data: {
+        //     name,
+        //   },
+        // },
       })
 
       if (signUpError) throw signUpError
+
+      const user = signUpResponse?.user;
 
       // Create a profile for the user
       if (user) {
@@ -41,15 +43,26 @@ export default function SignUpPage() {
           .insert([
             {
               id: user.id,
-              name,
-              email,
+              name, // 'name' is from the form state
+              email, // 'email' is from the form state
             },
           ])
 
-        if (profileError) throw profileError
+        if (profileError) {
+            console.error("Error inserting profile:", profileError); // Log detailed error
+            throw profileError;
+        }
+      } else if (!signUpError) {
+        // This case should ideally not happen if signUpError is null and no user object was returned
+        console.warn("Signup was reported as successful by Supabase but no user object was returned. Profile not created.");
+        // Consider throwing an error here or setting a more specific message for the user
+        throw new Error("Signup process incomplete. Please try again.");
       }
 
-      router.push('/auth/verify-email')
+      // If email confirmations are disabled (as per config.toml), user is active.
+      // If they were enabled, you'd redirect to /auth/verify-email
+      router.push('/feed') // Assuming successful signup and profile creation, go to feed
+      // router.push('/auth/verify-email')
     } catch (error: any) {
       setError(error.message)
     } finally {

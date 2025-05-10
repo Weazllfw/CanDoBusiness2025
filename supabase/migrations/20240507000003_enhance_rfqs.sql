@@ -130,6 +130,25 @@ CREATE POLICY "Companies can create quotes"
         AND companies.owner_id = auth.uid()
     ));
 
+-- Quote revision policies
+CREATE POLICY "Quote revisions are viewable by quote viewers"
+    ON quote_revisions FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM quotes q
+        JOIN companies c ON (
+            c.owner_id = auth.uid() AND
+            (
+                c.id = q.company_id OR
+                c.id = (SELECT company_id FROM rfqs WHERE id = q.rfq_id)
+            )
+        )
+        WHERE q.id = quote_revisions.quote_id
+    ));
+
+CREATE POLICY "Quote revisions are managed by the system"
+    ON quote_revisions FOR INSERT
+    WITH CHECK (true);  -- Managed by trigger only
+
 -- Functions
 CREATE OR REPLACE FUNCTION get_rfq_statistics(rfq_id UUID)
 RETURNS TABLE (

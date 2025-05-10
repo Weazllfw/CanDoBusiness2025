@@ -1,0 +1,121 @@
+-- supabase/migrations/YYYYMMDDHHMMSS_create_simple_messaging.sql
+
+-- 1. Create Messages Table
+CREATE TABLE public.messages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    sender_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    receiver_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    content text NOT NULL,
+    read boolean DEFAULT false NOT NULL
+);
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+-- Add indexes for performance
+CREATE INDEX messages_sender_id_idx ON public.messages(sender_id);
+CREATE INDEX messages_receiver_id_idx ON public.messages(receiver_id);
+CREATE INDEX messages_created_at_idx ON public.messages(created_at DESC);
+
+-- 2. RLS Policies for Messages
+CREATE POLICY "Users can view their own messages" 
+ON public.messages FOR SELECT
+USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+-- Drop the old policy first if it exists to avoid conflicts
+DROP POLICY IF EXISTS "Users can send messages" ON public.messages;
+DROP POLICY IF EXISTS "Users or System can send messages" ON public.messages; -- Drop the one we just tried too
+
+-- Allow users to send messages as themselves, OR allow the system user to send messages (if done by postgres role).
+-- Using the actual system user UUID for rmarshall@itmarshall.net
+CREATE POLICY "Users or System can send messages" 
+ON public.messages FOR INSERT
+WITH CHECK (
+  (auth.uid() = sender_id) OR 
+  (
+    -- For SECURITY DEFINER functions (like the welcome message trigger running as postgres)
+    -- check that the sender_id corresponds to the known system admin email.
+    session_user = 'postgres' AND
+    EXISTS (
+        SELECT 1
+        FROM public.profiles
+        WHERE public.profiles.id = sender_id AND public.profiles.email = 'rmarshall@itmarshall.net'
+    )
+  )
+);
+
+CREATE POLICY "Users can mark their received messages as read" 
+ON public.messages FOR UPDATE
+USING (auth.uid() = receiver_id)
+WITH CHECK (auth.uid() = receiver_id AND read = true);
+
+-- 3. Create Message View (joining with profiles)
+CREATE OR REPLACE VIEW public.message_view AS
+SELECT
+    m.id,
+    m.created_at,
+    m.content,
+    m.sender_id,
+    m.receiver_id,
+    m.read,
+    sender_profile.name AS sender_name,
+    sender_profile.avatar_url AS sender_avatar,
+    receiver_profile.name AS receiver_name,
+    receiver_profile.avatar_url AS receiver_avatar
+FROM
+    public.messages m
+JOIN
+    public.profiles sender_profile ON m.sender_id = sender_profile.id
+JOIN
+    public.profiles receiver_profile ON m.receiver_id = receiver_profile.id;
+
+-- 4. Create Get Conversations Function
+CREATE OR REPLACE FUNCTION public.get_conversations(p_current_user_id uuid)
+RETURNS TABLE(
+    other_user_id uuid,
+    other_user_name text,
+    other_user_avatar text,
+    last_message_id uuid,
+    last_message_content text,
+    last_message_at timestamp with time zone,
+    last_message_sender_id uuid,
+    unread_count bigint
+)
+LANGUAGE sql
+SECURITY INVOKER -- To respect RLS of underlying tables when accessed via a view/function that joins them
+AS $$
+    WITH ranked_messages AS (
+        SELECT
+            m.id,
+            m.created_at,
+            m.content,
+            m.sender_id,
+            m.receiver_id,
+            m.read,
+            CASE
+                WHEN m.sender_id = p_current_user_id THEN m.receiver_id
+                ELSE m.sender_id
+            END AS other_user_id,
+            ROW_NUMBER() OVER (PARTITION BY CASE WHEN m.sender_id = p_current_user_id THEN m.receiver_id ELSE m.sender_id END ORDER BY m.created_at DESC) as rn
+        FROM
+            public.messages m
+        WHERE
+            m.sender_id = p_current_user_id OR m.receiver_id = p_current_user_id
+    )
+    SELECT
+        rm.other_user_id,
+        p.name AS other_user_name,
+        p.avatar_url AS other_user_avatar,
+        rm.id AS last_message_id,
+        rm.content AS last_message_content,
+        rm.created_at AS last_message_at,
+        rm.sender_id AS last_message_sender_id,
+        (SELECT COUNT(*) FROM public.messages unread_m WHERE unread_m.receiver_id = p_current_user_id AND unread_m.sender_id = rm.other_user_id AND unread_m.read = false) AS unread_count
+    FROM
+        ranked_messages rm
+    JOIN
+        public.profiles p ON rm.other_user_id = p.id
+    WHERE
+        rm.rn = 1
+    ORDER BY
+        rm.created_at DESC;
+$$; 
