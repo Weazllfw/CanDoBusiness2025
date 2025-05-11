@@ -1,5 +1,6 @@
 -- Create internal schema for helper functions and triggers
 CREATE SCHEMA IF NOT EXISTS internal;
+GRANT USAGE ON SCHEMA internal TO authenticated, service_role;
 
 -- Admin check function
 CREATE OR REPLACE FUNCTION internal.is_admin(p_user_id uuid)
@@ -106,7 +107,14 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- Check if the user performing the update is the owner AND not an admin
+  -- If the current_user (effective user for permission checking) is a known privileged role,
+  -- assume this is a SECURITY DEFINER function (like our RPC) performing the update.
+  IF current_user IN ('postgres', 'supabase_admin', 'admin', 'service_role') THEN
+    RETURN NEW; -- Allow the update
+  END IF;
+
+  -- If not a privileged current_user, proceed with the original checks based on auth.uid()
+  -- This auth.uid() refers to the user from the JWT (the original caller).
   IF OLD.owner_id = auth.uid() AND NOT internal.is_admin(auth.uid()) THEN
     IF NEW.verification_status IS DISTINCT FROM OLD.verification_status THEN
       RAISE EXCEPTION 'As a company owner, you cannot directly change the verification_status. Please contact support if changes are needed.';

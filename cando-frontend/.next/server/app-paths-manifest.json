@@ -1,10 +1,10 @@
 {
   "/not-found": "app/not-found.js",
-  "/page": "app/page.js",
-  "/feed/page": "app/feed/page.js",
-  "/auth/signup/page": "app/auth/signup/page.js",
-  "/company/new/page": "app/company/new/page.js",
-  "/company/[id]/page": "app/company/[id]/page.js",
   "/admin/page": "app/admin/page.js",
-  "/auth/login/page": "app/auth/login/page.js"
+  "/company/[id]/apply-for-tier2-verification/page": "app/company/[id]/apply-for-tier2-verification/page.js",
+  "/auth/login/page": "app/auth/login/page.js",
+  "/dashboard/companies/page": "app/dashboard/companies/page.js",
+  "/admin/verifications/page": "app/admin/verifications/page.js",
+  "/page": "app/page.js",
+  "/feed/page": "app/feed/page.js"
 }

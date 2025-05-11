@@ -232,4 +232,24 @@ The frontend messaging UI is primarily managed within `cando-frontend/src/compon
     b.  If User B has the `MessagesModal` open and is subscribed via `useMessages`, their UI updates to show the new message from User A in the correct conversation thread.
     c.  User A's UI also updates optimistically or via the same Realtime event.
 
+**6.3. Automated Company Verification Notifications**
+
+When an administrator updates a company's verification status (e.g., to 'Tier 1 Verified' or 'Tier 1 Rejected'):
+1.  The administrator uses the `CompanyVerificationTable` in the admin dashboard.
+2.  Upon saving changes, the frontend calls the `public.admin_update_company_verification` RPC.
+3.  This RPC function, after successfully updating the company's `verification_status` and `admin_notes` in the `public.companies` table, proceeds to send a notification.
+4.  **Message Generation:**
+    a.  The function looks up the `system_user_id` (e.g., associated with 'rmarshall@itmarshall.net') from `public.profiles`.
+    b.  It identifies the `company_owner_id` from the updated company record.
+    c.  It constructs a message detailing the company name, the new verification status (using a user-friendly display name), and any admin notes provided during the update.
+5.  **Message Insertion:**
+    a.  A new message is inserted into the `public.messages` table.
+        -   `sender_id`: The `system_user_id`.
+        -   `receiver_id`: The `company_owner_id`.
+        -   `content`: The generated notification message.
+    b.  This insertion is performed as the `postgres` user (due to `SECURITY DEFINER`) and is permitted by the RLS policy on `public.messages` that allows the system admin to send messages.
+6.  **User Receives Notification:**
+    a.  If the company owner has the `MessagesModal` open, Supabase Realtime will deliver the new message, and it will appear in their conversation list (typically as a new message from the system administrator).
+    b.  If not, the message will be there as an unread message the next time they open the messaging interface.
+
 This documentation should provide a good overview of the messaging system. 

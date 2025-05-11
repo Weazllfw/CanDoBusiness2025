@@ -17,12 +17,21 @@ The primary table for storing company information.
 | `name`                | `TEXT`                      | `NOT NULL`                                               | Name of the company.                                                        |
 | `description`         | `TEXT`                      |                                                          | A brief description of the company.                                         |
 | `website`             | `TEXT`                      |                                                          | The company's official website URL.                                        |
-| `location`            | `TEXT`                      |                                                          | Physical location or headquarters of the company.                           |
 | `industry`            | `TEXT`                      |                                                          | The industry sector the company operates in.                                |
 | `owner_id`            | `UUID`                      | `NOT NULL`, `REFERENCES auth.users(id) ON DELETE CASCADE`  | The user ID of the company's owner.                                        |
 | `avatar_url`          | `TEXT`                      |                                                          | URL for the company's logo or avatar image.                                |
 | `verification_status` | `VARCHAR(20)`               | `DEFAULT 'unverified'`, `NOT NULL`, `CHECK (verification_status IN ('unverified', 'pending', 'verified', 'rejected'))` | Current verification status of the company. Managed by admins.              |
 | `admin_notes`         | `TEXT`                      |                                                          | Notes added by administrators regarding the company or its verification.    |
+| `street_address`      | `TEXT`                      |                                                          | The company's street address.                                               |
+| `city`                | `TEXT`                      |                                                          | The city where the company is located.                                      |
+| `province`            | `VARCHAR(2)`                | `CHECK (province IN ('AB', 'BC', ...))`                 | Canadian province or territory code.                                        |
+| `postal_code`         | `VARCHAR(7)`                |                                                          | Canadian postal code (e.g., A1A 1A1).                                       |
+| `major_metropolitan_area`| `TEXT`                   |                                                          | Selected major metropolitan area.                                           |
+| `other_metropolitan_area_specify`| `TEXT`             |                                                          | Specific metropolitan area if 'Other' is chosen for `major_metropolitan_area`. |
+| `contact_person_name` | `TEXT`                      |                                                          | Name of the primary contact person for the company.                         |
+| `contact_person_email`| `TEXT`                      |                                                          | Email of the primary contact person.                                        |
+| `contact_person_phone`| `TEXT`                      |                                                          | Phone number of the primary contact person.                                 |
+| `services`            | `TEXT[]`                    |                                                          | Array of services offered by the company.                                   |
 
 ### 2.2. View: `public.companies_view`
 
@@ -34,8 +43,10 @@ To control data exposure, especially sensitive fields like `admin_notes`, a view
     CREATE OR REPLACE VIEW public.companies_view AS
     SELECT
       id, created_at, name, description, website,
-      location, industry, owner_id, avatar_url,
-      verification_status -- admin_notes is intentionally excluded
+      industry, owner_id, avatar_url,
+      verification_status, street_address, city, province, postal_code,
+      major_metropolitan_area, other_metropolitan_area_specify,
+      contact_person_name, contact_person_email, contact_person_phone, services
     FROM
       public.companies;
     ```
@@ -45,7 +56,7 @@ To control data exposure, especially sensitive fields like `admin_notes`, a view
 #### `public.get_user_companies(p_user_id UUID)`
 
 -   **Purpose:** Fetches all companies owned by a specific user.
--   **Returns:** `SETOF public.companies_view`. This ensures that even when owners fetch their company list, they do so through the view that omits `admin_notes`.
+-   **Returns:** `SETOF public.companies_view`. This ensures that even when owners fetch their company list, they do so through the view that omits `admin_notes` and reflects the latest company structure (including `other_metropolitan_area_specify` and excluding the old `location` field).
 -   **Security:** `SECURITY DEFINER`.
 -   **Usage:** Called by frontend components like `CompanySelector.tsx` and `ManageCompaniesPage.tsx` to populate lists of companies for the current user.
     ```sql

@@ -16,9 +16,18 @@ Company onboarding refers to the process by which users create and set up their 
     *   Company Name (required)
     *   Description
     *   Website
-    *   Location
     *   Industry
     *   Avatar URL (for company logo)
+    *   Street Address
+    *   City
+    *   Province/Territory (required)
+    *   Major Metropolitan Area (required, conditional based on Province)
+    *   Other (Specify) Metropolitan Area (required if "Other" is selected for Major Metro Area)
+    *   Postal Code
+    *   Contact Person Name (required)
+    *   Contact Person Email
+    *   Contact Person Phone
+    *   Services (required, allows custom entries)
 4.  **Submission:** Upon submission, the form data is used to create a new record in the `public.companies` table.
     *   The `owner_id` is automatically set to the current authenticated user's ID (`auth.uid()`).
     *   The `verification_status` defaults to 'unverified'.
@@ -50,8 +59,8 @@ Company onboarding refers to the process by which users create and set up their 
     -   Fetches company data based on the ID in the URL.
     -   Renders `CompanyForm.tsx` pre-filled with data.
 -   **`cando-frontend/src/components/company/CompanyForm.tsx`:**
-    -   A reusable React component providing the form fields for company details.
-    -   Handles form state, validation (basic), and submission logic (calling Supabase client to insert/update).
+    -   A reusable React component providing the form fields for company details (including new address fields, `major_metropolitan_area`, `other_metropolitan_area_specify`, contact details, services, and removing the old `location` field).
+    -   Handles form state, validation (Zod schema), and submission logic (calling Supabase client to insert/update).
 -   **`cando-frontend/src/app/dashboard/companies/page.tsx` (`ManageCompaniesPage`):**
     -   Displays a list of companies owned by the current user.
     -   Fetches data using the `get_user_companies` RPC (which returns `companies_view` data).

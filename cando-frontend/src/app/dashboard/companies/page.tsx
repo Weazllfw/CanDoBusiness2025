@@ -6,6 +6,13 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation' // For redirecting if not logged in
 import { BuildingOffice2Icon, PencilSquareIcon, PlusCircleIcon } from '@heroicons/react/24/outline'
+import { 
+  CheckBadgeIcon, 
+  ClockIcon, 
+  XCircleIcon, 
+  QuestionMarkCircleIcon, 
+  ShieldCheckIcon 
+} from '@heroicons/react/24/solid'
 import type { Database } from '@/types/supabase'
 
 // Matches the structure returned by get_user_companies (which now returns companies_view)
@@ -17,24 +24,43 @@ interface UserCompany {
   // Add other fields from companies_view if needed for display, e.g., description
 }
 
-const getStatusIndicatorClasses = (status?: string | null): string => {
-  if (!status) return 'border-gray-300 text-gray-500 bg-gray-100';
+const getStatusStyles = (status?: string | null): { badgeClass: string; iconClass: string; textClass: string; IconComponent: React.ElementType } => {
   switch (status) {
-    case 'verified':
-      return 'border-green-300 text-green-700 bg-green-100';
-    case 'pending':
-      return 'border-blue-300 text-blue-700 bg-blue-100';
-    case 'rejected':
-      return 'border-red-300 text-red-700 bg-red-100';
-    case 'unverified':
+    case 'TIER2_FULLY_VERIFIED':
+      return { badgeClass: 'bg-green-100 border-green-400', iconClass: 'text-green-500', textClass: 'text-green-700', IconComponent: ShieldCheckIcon };
+    case 'TIER1_VERIFIED':
+      return { badgeClass: 'bg-green-50 border-green-300', iconClass: 'text-green-400', textClass: 'text-green-600', IconComponent: CheckBadgeIcon };
+    case 'TIER1_PENDING':
+    case 'TIER2_PENDING':
+      return { badgeClass: 'bg-blue-50 border-blue-300', iconClass: 'text-blue-400', textClass: 'text-blue-600', IconComponent: ClockIcon };
+    case 'TIER1_REJECTED':
+    case 'TIER2_REJECTED':
+      return { badgeClass: 'bg-red-50 border-red-300', iconClass: 'text-red-400', textClass: 'text-red-600', IconComponent: XCircleIcon };
+    case 'UNVERIFIED':
     default:
-      return 'border-yellow-300 text-yellow-700 bg-yellow-100';
+      return { badgeClass: 'bg-yellow-50 border-yellow-300', iconClass: 'text-yellow-400', textClass: 'text-yellow-600', IconComponent: QuestionMarkCircleIcon };
   }
 };
 
-const formatVerificationStatus = (status?: string | null): string => {
-  if (!status) return 'Status Unknown';
-  return status.charAt(0).toUpperCase() + status.slice(1);
+const formatVerificationStatusText = (status?: string | null): string => {
+  if (!status) return 'Unknown';
+  return status.replace(/_/g, ' ').replace(/\b(TIER\s*\d*)/gi, txt => txt.toUpperCase()).replace(/\b([A-Z]{4,})/g, (txt) => txt.charAt(0) + txt.slice(1).toLowerCase());
+};
+
+interface VerificationBadgeProps {
+  status?: string | null;
+}
+
+const VerificationBadge: React.FC<VerificationBadgeProps> = ({ status }) => {
+  const { badgeClass, iconClass, textClass, IconComponent } = getStatusStyles(status);
+  const formattedText = formatVerificationStatusText(status);
+
+  return (
+    <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeClass}`}>
+      <IconComponent className={`mr-1.5 h-4 w-4 ${iconClass}`} />
+      <span className={textClass}>{formattedText}</span>
+    </div>
+  );
 };
 
 export default function ManageCompaniesPage() {
@@ -131,20 +157,32 @@ export default function ManageCompaniesPage() {
                   )}
                   <div>
                     <h2 className="text-xl font-semibold text-gray-800 truncate" title={company.name}>{company.name}</h2>
-                     <span
-                        className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full border ${getStatusIndicatorClasses(company.verification_status)}`}
-                      >
-                        {formatVerificationStatus(company.verification_status)}
-                      </span>
+                    <VerificationBadge status={company.verification_status} />
                   </div>
                 </div>
                 {/* Optionally display more info like description here */}
                 {/* <p className="text-gray-600 text-sm mb-4 truncate">{company.description || 'No description'}</p> */}
-                <div className="mt-4 flex justify-end">
-                  <Link href={`/company/${company.id}`}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <div className="mt-4 flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                  {(company.verification_status === 'UNVERIFIED' || company.verification_status === 'TIER1_REJECTED') && (
+                    <Link 
+                      href={`/company/${company.id}/apply-for-verification`}
+                      className="inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full sm:w-auto"
+                    >
+                      Apply for Tier 1 Verification
+                    </Link>
+                  )}
+                  {company.verification_status === 'TIER1_VERIFIED' && (
+                    <Link
+                      href={`/company/${company.id}/apply-for-tier2-verification`}
+                      className="inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full sm:w-auto"
+                    >
+                      Apply for Tier 2 Verification ⭐
+                    </Link>
+                  )}
+                  <Link href={`/company/${company.id}/edit`}
+                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full sm:w-auto">
                     <PencilSquareIcon className="-ml-0.5 mr-2 h-4 w-4" aria-hidden="true" />
-                    Edit
+                    Edit Company
                   </Link>
                 </div>
               </div>
