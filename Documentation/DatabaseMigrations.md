@@ -6,334 +6,271 @@ This document provides a summary of the database migrations applied to the proje
 
 ## `20240507000000_initial_schema.sql`
 
-**Purpose:** Establishes the foundational database schema.
+**Purpose:** Establishes the foundational database schema. Idempotent.
 
 **Key Changes:**
-*   Enables the `pg_trgm` extension for trigram-based text searching.
-*   Creates core tables:
-    *   `public.companies`: Stores company profile information, including `owner_id` referencing `auth.users`.
-    *   `public.rfqs`: Stores Request for Quotes, linked to `companies`.
-    *   `public.posts`: Stores general posts and RFQ-related posts, linked to `companies` and `rfqs`.
-*   Adds indexes on foreign key columns for performance.
-*   Enables Row Level Security (RLS) for `companies`, `rfqs`, and `posts`.
-*   Defines initial RLS policies:
-    *   Public read access for all three tables.
-    *   Users can insert, update, and delete their own records in `companies`.
-    *   Company owners can insert, update, and delete `rfqs` and `posts` associated with their companies.
-*   Creates helper functions:
-    *   `public.get_user_companies(user_id UUID)`: Retrieves companies owned by a specific user.
-    *   `public.internal_upsert_profile_for_user(...)`: Function to create/update a user's profile in `public.profiles` (intended to be called by a setup script).
+*   Enables `pg_trgm`.
+*   Creates `public.companies`, `public.rfqs`.
+*   Creates an initial `public.posts` table (defined with `id`, `created_at`, `content`, `company_id`, `type`, `title`, `rfq_id`; RLS allows public read and company owner CRUD). This table is later replaced by `20250520000000_create_posts_table.sql`.
+*   Adds indexes and RLS policies for these tables.
+*   Creates helper functions: `public.get_user_companies(user_id UUID)` (SECURITY DEFINER) and `public.internal_upsert_profile_for_user(...)` (SECURITY DEFINER).
 
 ---
 
 ## `20240507000001_add_indexes.sql`
 
-**Purpose:** Improves search performance on the `companies` table.
+**Purpose:** Improves search performance on `public.companies`. Idempotent.
 
 **Key Changes:**
-*   Adds a GIN (Generalized Inverted Index) on the `companies.name` column using `gin_trgm_ops`. This is useful for efficient trigram-based text similarity searches (e.g., fuzzy name matching).
+*   Adds GIN index `public.companies_name_idx` on `companies.name` using `gin_trgm_ops`.
 
 ---
 
 ## `20240507000003_enhance_rfqs.sql`
 
-**Purpose:** Significantly expands the RFQ functionality and related data structures.
+**Purpose:** Significantly expands RFQ functionality. Idempotent.
 
 **Key Changes:**
-*   Adds new columns to `public.rfqs`: `category`, `required_certifications` (array), `attachments` (array), `preferred_delivery_date`, `visibility`, `tags` (array), `requirements` (JSONB), `updated_at`.
-*   Creates new tables:
-    *   `public.rfq_templates`: Allows users to save RFQ templates.
-    *   `public.rfq_invitations`: Tracks invitations sent to companies for specific RFQs.
-    *   `public.quotes`: Stores quotes submitted by companies in response to RFQs.
-    *   `public.quote_revisions`: Tracks revisions made to quotes.
-*   Adds various indexes on the new tables and existing `rfqs` table for performance.
-*   Enables RLS for the new tables (`rfq_templates`, `rfq_invitations`, `quotes`, `quote_revisions`).
-*   Defines RLS policies for these new tables, typically allowing owners/involved parties to view/manage their respective records.
-*   Creates functions:
-    *   `public.get_rfq_statistics(rfq_id UUID)`: Calculates statistics for an RFQ (total quotes, average amount, etc.).
-*   Creates triggers:
-    *   `update_rfq_timestamp`: Automatically updates `rfqs.updated_at` on row updates.
-    *   `update_quote_timestamp`: Automatically updates `quotes.updated_at` on row updates (reuses `update_rfq_timestamp` function).
-    *   `create_quote_revision_on_update`: Automatically creates a record in `quote_revisions` when a quote is updated.
+*   Adds columns to `public.rfqs` (e.g., `category`, `requirements` JSONB, `updated_at`).
+*   Creates `public.rfq_templates`, `public.rfq_invitations`, `public.quotes`, `public.quote_revisions`.
+*   Adds indexes and RLS policies for new/existing tables.
+*   Creates functions: `public.get_rfq_statistics`, `public.update_rfq_timestamp`, `public.create_quote_revision`.
+*   Creates triggers for `updated_at` and quote revisions.
 
 ---
 
 ## `20240508000001_create_profiles.sql`
 
-**Purpose:** Establishes a public `profiles` table to store user-specific public information.
+**Purpose:** Establishes `public.profiles` for user-specific public info. Idempotent.
 
 **Key Changes:**
-*   Creates `public.profiles` table with columns like `id` (references `auth.users.id`), `name`, `email`, `avatar_url`.
-*   Adds indexes on `email` and `name` (GIN trigram index).
-*   Enables RLS for `profiles`.
-*   Defines RLS policies:
-    *   Profiles are viewable by everyone.
-    *   Users can update and delete their own profile.
-    *   Users can only insert their own profile.
+*   Creates `public.profiles` table (references `auth.users.id`).
+*   Adds indexes (including GIN trigram on `name`).
+*   Defines RLS policies (public read, owner can manage).
 
 ---
 
 ## `20240508000002_add_company_avatar.sql`
 
-**Purpose:** Adds a field to store company avatar/logo URLs.
+**Purpose:** Adds `avatar_url` to `public.companies` for logos. Idempotent.
 
 **Key Changes:**
-*   Adds an `avatar_url TEXT` column to the `public.companies` table. This column will store the URL of the company's logo, typically hosted in Supabase Storage.
+*   Adds `avatar_url TEXT` column.
 
 ---
 
 ## `20240509000000_create_simple_messaging.sql`
 
-**Purpose:** Implements a basic direct messaging system between users.
+**Purpose:** Implements basic direct messaging. Idempotent.
 
 **Key Changes:**
-*   Creates `public.messages` table with `sender_id`, `receiver_id`, `content`, and `read` status.
-*   Enables RLS for `messages`.
-*   Adds indexes for performance on `sender_id`, `receiver_id`, and `created_at`.
-*   Defines RLS policies for `messages`:
-    *   Users can view messages they sent or received.
-    *   Users can send messages as themselves. Includes a condition to allow a designated system user (identified by email via `profiles` table) to send messages if the operation is performed by the `postgres` session user (e.g., from a `SECURITY DEFINER` trigger).
-    *   Users can mark messages they received as read.
-*   Creates `public.message_view`: A view that joins `messages` with `profiles` to include sender/receiver names and avatars.
-*   Creates `public.get_conversations(p_current_user_id uuid)`: A function to retrieve a list of a user's conversations, showing the other user, last message, and unread count.
+*   Creates `public.messages` table with `id`, `created_at`, `sender_id` (FK to `auth.users`), `receiver_id` (FK to `auth.users`), `content`, `read`. Adds indexes.
+*   RLS Policies for `public.messages`:
+    *   Users can SELECT messages where they are sender or receiver.
+    *   Users can INSERT messages if `auth.uid()` is the `sender_id`.
+    *   The 'postgres' role (e.g., in triggers) can INSERT messages if the `sender_id` is the profile ID of 'rmarshall@itmarshall.net'.
+    *   Users can UPDATE messages they received to mark them as read.
+*   Creates `public.message_view` (joins `messages` with `profiles`).
+*   Creates `public.get_conversations(p_current_user_id uuid)` function.
 
 ---
 
 ## `20240509000001_add_welcome_message_trigger.sql`
 
-**Purpose:** Automates sending a welcome message to new users.
+**Purpose:** Automates sending welcome messages to new users. Idempotent.
 
 **Key Changes:**
-*   Creates `public.send_welcome_message_to_new_user()`: A PL/pgSQL trigger function.
-    *   This function is `SECURITY DEFINER`.
-    *   It looks up a designated system user ID from `public.profiles` using a hardcoded email ('rmarshall@itmarshall.net').
-    *   It inserts a welcome message into `public.messages` from the system user to the newly created user (identified by `NEW.id` from the trigger context).
-    *   Includes logging (RAISE NOTICE/WARNING) for diagnostics.
-*   Creates a trigger `trigger_send_welcome_message`:
-    *   Fires `AFTER INSERT` on the `public.profiles` table.
-    *   Executes `public.send_welcome_message_to_new_user()` for each new profile.
+*   Creates `public.send_welcome_message_to_new_user()` trigger function (`SECURITY DEFINER`, sends message from system user).
+*   Creates trigger `trigger_send_welcome_message` on `public.profiles`.
 
 ---
 
 ## `20240510000000_configure_realtime_for_messages.sql`
 
-**Purpose:** Configures the `public.messages` table for Supabase Realtime.
+**Purpose:** Configures `public.messages` for Supabase Realtime. Idempotent.
 
 **Key Changes:**
-*   Sets `REPLICA IDENTITY FULL` for `public.messages`. This is required for Realtime to capture detailed changes (old and new values) for `UPDATE` and `DELETE` events.
-*   Attempts to add `public.messages` to the `supabase_realtime` PostgreSQL publication. This allows changes to the table to be broadcast over websockets.
-*   Includes fallback logic to try adding to a schema-named publication (e.g., `public`) if `supabase_realtime` doesn't exist, though this is less common in newer Supabase projects.
-*   Grants `SELECT` on `pg_publication` and `pg_publication_tables` to the `postgres` role, which can be necessary for Realtime status checks.
+*   Sets `REPLICA IDENTITY FULL` for `public.messages`.
+*   Adds `public.messages` to `supabase_realtime` publication.
 
 ---
 
 ## `20240510000001_add_company_verification.sql`
 
-**Purpose:** Adds fields to support an admin-driven company verification process.
+**Purpose:** Adds fields to `public.companies` for admin-driven verification. Idempotent.
 
 **Key Changes:**
-*   Adds columns to `public.companies`:
-    *   `verification_status VARCHAR(20)`: Stores the verification state (e.g., 'unverified', 'pending', 'verified', 'rejected'). Defaults to 'unverified'.
-    *   `admin_notes TEXT`: For administrators to leave notes regarding the verification.
-*   Adds a `CHECK` constraint `check_verification_status` to ensure `verification_status` only contains allowed values.
+*   Adds `verification_status VARCHAR(20)` (default 'unverified') and `admin_notes TEXT`.
+*   Adds `check_verification_status` constraint (`'unverified', 'pending', 'verified', 'rejected'`).
 
 ---
 
 ## `20240510000002_secure_companies_access.sql`
 
-**Purpose:** Refines access control for company data, introduces an admin role concept, and protects sensitive fields.
+**Purpose:** Refines `public.companies` access control, introduces `internal.is_admin()`. For details on administrator identification, see `Documentation/AdministratorSystem.md`.
 
 **Key Changes:**
-*   Creates `internal` schema: A schema for helper functions and triggers not meant for direct public access.
-*   Grants `USAGE ON SCHEMA internal TO authenticated, service_role;` (This was a fix for a "permission denied for schema internal" error).
-*   Creates `internal.is_admin(p_user_id uuid)`: A `SECURITY DEFINER` function that checks if a user is an administrator by comparing their email (from `public.profiles`) against a hardcoded admin email ('rmarshall@itmarshall.net'). Granted execute to `authenticated` and `service_role`.
-*   Creates `public.companies_view`: A view that exposes most company data but hides `admin_notes` for general queries.
-*   Updates `public.get_user_companies(p_user_id UUID)`: Modifies the function to return `SETOF public.companies_view`.
-*   Revises RLS policies for `public.companies`:
-    *   Drops old policies.
-    *   Forces RLS.
-    *   "Authenticated users can view company data via view": Allows authenticated users to select from `public.companies` (intended to be filtered through `companies_view` on the client-side or via specific functions).
-    *   "Owners can insert their companies": Standard owner insert policy.
-    *   "Owners can update their companies": Standard owner update policy (both `USING` and `WITH CHECK` on `auth.uid() = owner_id`).
-    *   "Owners can delete their companies": Standard owner delete policy.
-    *   "Admins can select all company data": Allows users identified by `internal.is_admin()` to select all columns directly from `public.companies`.
-    *   "Admins can update any company": Allows admins to update any company record.
-*   Creates `internal.prevent_owner_update_restricted_company_fields()`: A trigger function.
-    *   Prevents non-admin company owners from modifying `verification_status` or `admin_notes`.
-*   Creates trigger `before_company_update_check_restricted_fields`:
-    *   Fires `BEFORE UPDATE` on `public.companies`.
-    *   Executes `internal.prevent_owner_update_restricted_company_fields()`.
+*   Creates `internal` schema and `internal.is_admin(p_user_id uuid)` function.
+*   Creates basic `public.companies_view` (hides `admin_notes`).
+*   Updates `public.get_user_companies` to use this view.
+*   Revises RLS: owners manage own, admins have full access (via `internal.is_admin()`).
+*   Trigger `internal.prevent_owner_update_restricted_company_fields` to protect `verification_status`, `admin_notes` from owner updates.
 
 ---
 
 ## `20240510000003_admin_company_tools.sql`
 
-**Purpose:** Adds server-side functions for administrators to manage companies.
+**Purpose:** Adds admin functions for company management. Idempotent.
+Admin access is controlled by `internal.is_admin()`. See `Documentation/AdministratorSystem.md`.
 
 **Key Changes:**
-*   Creates `admin_company_details` (custom SQL type): Defines the structure for returning detailed company information, including owner details.
-*   Creates `admin_get_all_companies_with_owner_info()`:
-    *   A `SECURITY DEFINER` function.
-    *   Requires caller to be an admin (via `internal.is_admin()`).
-    *   Returns a set of `admin_company_details` for all companies, joined with owner information from `public.profiles`.
-*   Creates `admin_update_company_verification(p_company_id UUID, p_new_status VARCHAR(20), p_new_admin_notes TEXT)`:
-    *   A `SECURITY DEFINER` function.
-    *   Requires caller to be an admin.
-    *   Updates the `verification_status` and `admin_notes` for a specified company.
-    *   Returns the updated company row.
-*   Grants `EXECUTE` on these functions to `authenticated` and `service_role` (access is controlled within the functions by `internal.is_admin()`).
+*   Creates `public.admin_company_details` type (basic at this stage).
+*   Creates `public.admin_get_all_companies_with_owner_info()` (uses `internal.is_admin()`).
+*   Creates `public.admin_update_company_verification(...)` (uses `internal.is_admin()`).
 
 ---
 
 ## `20240510000004_enhance_company_profile.sql`
 
-**Purpose:** Adds more detailed fields to the company profile for the onboarding form.
+**Purpose:** Enhances `public.companies` with address, contact, services. Updates view/admin tools. Idempotent.
 
 **Key Changes:**
-*   Adds new columns to `public.companies`:
-    *   `street_address TEXT`
-    *   `city TEXT`
-    *   `province VARCHAR(2)`
-    *   `postal_code VARCHAR(7)`
-    *   `major_metropolitan_area TEXT`
-    *   `contact_person_name TEXT`
-    *   `contact_person_email TEXT`
-    *   `contact_person_phone TEXT`
-    *   `services TEXT[]` (array of text for multiple services)
-*   Adds `check_canadian_province` constraint to `public.companies` to validate the `province` field against a list of Canadian province/territory codes.
-*   Updates `public.companies_view` to include these new fields.
-*   Updates the `admin_company_details` type and `admin_get_all_companies_with_owner_info()` function to include these new fields for admin review.
+*   Adds `street_address`, `city`, `province`, `postal_code`, `major_metropolitan_area`, `contact_person_name`, `contact_person_email`, `contact_person_phone`, `services` TEXT[] to `public.companies`.
+*   Updates `public.companies_view` (includes these new fields and original `location`).
+*   Updates `public.admin_company_details` type and `admin_get_all_companies_with_owner_info` function (includes new fields and original `company_location`).
 
 ---
 
 ## `20240510000005_setup_logo_storage.sql`
 
-**Purpose:** Sets up Supabase Storage for company logos and configures RLS policies.
+**Purpose:** Sets up Supabase Storage for company logos. Idempotent.
 
 **Key Changes:**
-*   Inserts a new bucket into `storage.buckets` named `company-logos`.
-    *   The bucket is public (`public = TRUE`).
-    *   File size limit is 5MB.
-    *   Allowed MIME types are common image formats (JPEG, PNG, GIF, WebP).
-    *   Uses `ON CONFLICT (id) DO UPDATE` for idempotency.
-*   Defines RLS policies on `storage.objects` for the `company-logos` bucket:
-    *   Drops existing policies for idempotency.
-    *   "Public read access for company logos": Allows anyone to read files from the bucket.
-    *   "Company owners can upload logos": Allows authenticated users to insert objects (upload files) if the `auth.uid()` matches the `owner_id` of the company whose UUID is the first part of the file path (`(string_to_array(storage.objects.name, '/'))[1]::uuid`).
-    *   "Company owners can update logos": Similar logic for updating existing logo files.
-    *   "Company owners can delete logos": Similar logic for deleting logo files.
-    *   Crucially, these policies use `storage.objects.name` (or its implicit reference `name` or `objects.name` depending on SQL interpretation context) when parsing the file path, which was a fix for an earlier bug where `companies.name` was being incorrectly used. 
+*   Creates 'company-logos' storage bucket.
+*   RLS: Public read; owners manage their company's logos.
 
 ---
 
 ## `20240514120000_add_other_metro_specify.sql`
 
-**Purpose:** Adds a specific field for users to enter their metropolitan area if they select "Other" for the `major_metropolitan_area`, removes the old general `location` field, and updates related database objects.
+**Purpose:** Adds `other_metropolitan_area_specify` to `public.companies`. Removes old `location` field from view/admin type. Idempotent.
 
 **Key Changes:**
-*   Adds `other_metropolitan_area_specify TEXT` column to the `public.companies` table.
-*   The general `location TEXT` column is effectively removed from `public.companies` (it's no longer included in the `companies_view` or admin-related types and functions).
-*   Updates `public.companies_view`:
-    *   Includes the new `other_metropolitan_area_specify` field.
-    *   Excludes the old `location` field.
-*   Updates `public.get_user_companies(p_user_id UUID)`:
-    *   The function is recreated to return `SETOF public.companies_view`, ensuring it reflects the changes in the view (inclusion of `other_metropolitan_area_specify` and exclusion of `location`).
-*   Updates `admin_company_details` (custom SQL type):
-    *   The type is recreated to include `other_metropolitan_area_specify TEXT`.
-    *   Excludes the old `company_location TEXT` field.
-*   Updates `admin_get_all_companies_with_owner_info()`:
-    *   The function is recreated to return `SETOF admin_company_details` (the updated type).
-    *   The internal `SELECT` statement is updated to fetch `c.other_metropolitan_area_specify` and no longer fetches `c.location`. 
+*   Adds `other_metropolitan_area_specify TEXT` to `public.companies`.
+*   Updates `public.companies_view`: adds `other_metropolitan_area_specify`, removes `location`.
+*   Updates `public.admin_company_details` type and `admin_get_all_companies_with_owner_info` function: adds `other_metropolitan_area_specify`, removes `company_location`.
 
 ---
 
 ## `20240515000000_add_tiered_verification.sql`
 
-**Purpose:** Implements a tiered company verification system, enhancing the existing verification process.
+**Purpose:** Implements tiered company verification. Updates `public.companies`, view, and admin tools. Idempotent.
 
 **Key Changes:**
-*   Adds new columns to `public.companies`:
-    *   `self_attestation_completed BOOLEAN NOT NULL DEFAULT FALSE`: Tracks if the user has completed a self-attestation step.
-    *   `business_number TEXT NULL`: Stores the company's official business registration number.
-    *   `public_presence_links TEXT[] NULL`: Stores an array of URLs to public profiles or mentions (e.g., social media, business directories).
-*   Standardizes existing `verification_status` values in `public.companies` to 'UNVERIFIED' to establish a baseline for the new tier system.
-*   Updates the `check_verification_status` constraint on `public.companies.verification_status` to include new tiered statuses:
-    *   'UNVERIFIED' (Tier 0)
-    *   'TIER1_PENDING' (User submitted for Tier 1)
-    *   'TIER1_VERIFIED' (Tier 1 - Standard Verification)
-    *   'TIER1_REJECTED'
-    *   'TIER2_PENDING' (User submitted for Tier 2)
-    *   'TIER2_FULLY_VERIFIED' (Tier 2 - Fully Verified)
-    *   'TIER2_REJECTED'
-*   Ensures the `DEFAULT` value for `public.companies.verification_status` is 'UNVERIFIED'.
-*   Updates `public.companies_view` to include the new columns (`self_attestation_completed`, `business_number`, `public_presence_links`).
-*   Recreates `public.get_user_companies(p_user_id UUID)` function to return `SETOF public.companies_view`, ensuring it reflects the view changes.
-*   Updates the `admin_company_details` custom SQL type and the `admin_get_all_companies_with_owner_info()` function to include the new columns and reflect the new tiered `verification_status` values.
+*   Adds `self_attestation_completed`, `business_number`, `public_presence_links` to `public.companies`.
+*   Standardizes existing `verification_status` to 'UNVERIFIED'.
+*   Updates `check_verification_status` constraint with new statuses ('UNVERIFIED', 'TIER1_PENDING', 'TIER1_VERIFIED', 'TIER1_REJECTED', 'TIER2_PENDING', 'TIER2_FULLY_VERIFIED', 'TIER2_REJECTED').
+*   Updates `public.companies_view`: Includes new Tier 1 fields. The view at this stage reflects additions from `20240510000004_enhance_company_profile.sql` and `20240514120000_add_other_metro_specify.sql` (i.e., detailed address, `other_metropolitan_area_specify`, no `location`).
+*   Updates `public.admin_company_details` type and `public.admin_get_all_companies_with_owner_info`: Includes new Tier 1 fields and reflects changes from prior profile enhancements (no `company_location`).
 
 ---
 
 ## `20250511000022_create_request_tier1_verification_rpc.sql`
 
-**Purpose:** Creates a PostgreSQL RPC function that allows company owners to submit their company details for Tier 1 verification.
+**Purpose:** Creates RPC `public.request_company_tier1_verification` for Tier 1 submission. Idempotent.
 
 **Key Changes:**
-*   Creates the function `public.request_company_tier1_verification(p_company_id UUID, p_business_number TEXT, p_public_presence_links TEXT[], p_self_attestation_completed BOOLEAN)`:
-    *   This is a `LANGUAGE plpgsql` function with `SECURITY DEFINER` privileges.
-    *   It takes the company ID, business number, public presence links, and self-attestation status as input.
-    *   **Validation:**
-        *   Checks if the company exists.
-        *   Verifies that the `auth.uid()` of the caller matches the `owner_id` of the company.
-        *   Ensures the company is eligible for a new Tier 1 application (i.e., its current `verification_status` is 'UNVERIFIED' or 'TIER1_REJECTED').
-    *   **Action:**
-        *   Updates the `public.companies` table for the specified `p_company_id`.
-        *   Sets `business_number`, `public_presence_links`, and `self_attestation_completed` with the provided values.
-        *   Changes the `verification_status` to 'TIER1_PENDING'.
-*   Grants `EXECUTE` permission on this new function to the `authenticated` role, allowing logged-in users to call it.
+*   `public.request_company_tier1_verification(p_company_id UUID, p_business_number TEXT, p_public_presence_links TEXT[], p_self_attestation_completed BOOLEAN)`:
+    *   `SECURITY DEFINER`. Checks ownership, eligibility. Updates company to 'TIER1_PENDING'.
+
+---
+
+## `20250511163540_fix_tier2_storage_policy_take2.sql`
+
+**Purpose:** Configures `tier2-verification-documents` storage bucket and RLS. Idempotent.
+Admin RLS relies on `internal.is_admin()`. See `Documentation/AdministratorSystem.md`.
+
+**Key Changes:**
+*   Creates 'tier2-verification-documents' bucket (private).
+*   RLS policies: Admins (via internal.is_admin()) can read and delete all files. Company owners can upload documents to a path prefixed with their company's ID (e.g., {company_id}/{filename}). service_role has full access (including delete).
+
+---
+
+## `20250515500000_create_ensure_admin_function.sql`
+
+**Purpose:** Creates `internal.ensure_admin()` helper to enforce admin-only access. Idempotent.
+See `Documentation/AdministratorSystem.md` for details on admin identification.
+
+**Key Changes:**
+*   `internal.ensure_admin()`: Calls `internal.is_admin()`, raises exception if not admin.
 
 ---
 
 ## `20250516000000_add_company_stats_function.sql`
 
-**Purpose:** Adds a function to retrieve statistics about company verification statuses for the admin dashboard.
+**Purpose:** Adds `public.get_company_verification_stats()` for admin. Idempotent.
+Admin access controlled by `internal.ensure_admin()`. See `Documentation/AdministratorSystem.md`.
 
 **Key Changes:**
-*   Creates `public.get_company_verification_stats()`: A `SECURITY DEFINER` function.
-    *   Requires the caller to be an admin (via `internal.is_admin(auth.uid())`).
-    *   Returns a table with columns: `status VARCHAR(20)` and `count BIGINT`.
-    *   Groups companies by `verification_status` and counts them.
-*   Grants `EXECUTE` on this function to `authenticated` and `service_role`.
+*   `public.get_company_verification_stats()`: `SECURITY DEFINER`. Calls `internal.ensure_admin()`. Returns counts by verification status.
 
 ---
 
 ## `20250517000000_add_verification_status_notifications.sql`
 
-**Purpose:** Modifies the `admin_update_company_verification` RPC to automatically send a message to the company owner when their company's verification status is changed by an admin.
+**Purpose:** Updates `public.admin_update_company_verification` to send messages and delete Tier 2 docs. Idempotent.
+Admin access controlled by `internal.is_admin()`. See `Documentation/AdministratorSystem.md`.
 
 **Key Changes:**
-*   Re-defines the `public.admin_update_company_verification` function.
-*   The function now includes logic to:
-    1.  Look up the `system_user_id` from `public.profiles` using a predefined admin email (e.g., 'rmarshall@itmarshall.net').
-    2.  After successfully updating the company's verification status and admin notes, it retrieves the `company_owner_id`.
-    3.  Constructs a message detailing the company name, the new verification status (using a user-friendly display name), and any admin notes.
-    4.  Inserts this message into the `public.messages` table, with the system user as the sender and the company owner as the receiver.
-*   Includes error handling for message insertion to prevent the main transaction from failing and avoids sending a message if the company owner is the system user.
-*   The function remains `SECURITY DEFINER` and relies on the existing RLS policy for `public.messages` that allows the `postgres` session user (acting as the system admin profile) to send messages. 
+*   `public.admin_update_company_verification(...)` redefined:
+    *   Sends message from system user on status change.
+    *   Deletes Tier 2 doc from storage and clears company fields if status is 'TIER2_FULLY_VERIFIED' or 'TIER2_REJECTED'.
 
 ---
 
 ## `20250518000000_create_request_tier2_verification_rpc.sql`
 
-**Purpose:** Creates a PostgreSQL RPC function that allows company owners to apply for Tier 2 verification after successfully completing Tier 1.
+**Purpose:** Creates `public.request_company_tier2_verification` RPC for Tier 2 submission. Idempotent.
 
 **Key Changes:**
-*   Creates the function `public.request_company_tier2_verification(p_company_id UUID)`:
-    *   This is a `LANGUAGE plpgsql` function with `SECURITY DEFINER` privileges.
-    *   It takes the company ID as input.
-    *   **Validation:**
-        *   Checks if the company exists.
-        *   Verifies that the `auth.uid()` of the caller matches the `owner_id` of the company.
-        *   Ensures the company is eligible for a Tier 2 application (i.e., its current `verification_status` must be 'TIER1_VERIFIED').
-    *   **Action:**
-        *   Updates the `public.companies` table for the specified `p_company_id`.
-        *   Changes the `verification_status` to 'TIER2_PENDING'.
-*   Grants `EXECUTE` permission on this new function to the `authenticated` role, allowing logged-in, Tier 1 verified company owners to call it. 
+*   `public.request_company_tier2_verification(p_company_id UUID, p_tier2_document_type TEXT, p_tier2_document_filename TEXT, p_tier2_document_storage_path TEXT)`:
+    *   `SECURITY DEFINER`. Checks ownership, 'TIER1_VERIFIED' status. Updates company to 'TIER2_PENDING', stores doc details.
+
+---
+
+## `20250518500000_add_tier2_process_fields_to_companies.sql`
+
+**Purpose:** Adds fields to `public.companies` for managing the Tier 2 verification document submission process. Idempotent.
+
+**Key Changes:**
+*   Adds `tier2_submission_date`, `tier2_document_type`, `tier2_document_filename`, `tier2_document_storage_path`, `tier2_document_uploaded_at` to `public.companies` (using `ADD COLUMN IF NOT EXISTS`). Includes comments for each column.
+
+---
+
+## `20250519000000_add_tier2_document_fields.sql`
+
+**Purpose:** Adds Tier 2 document-related fields to `public.companies` and updates dependent views/types. Idempotent.
+
+**Key Changes:**
+*   Attempts to add `tier2_document_type`, `tier2_document_filename`, `tier2_document_storage_path`, `tier2_document_uploaded_at` to `public.companies` (these are likely already present from `20250518500000_add_tier2_process_fields_to_companies.sql`).
+*   Crucially, updates `public.companies_view` and `public.admin_company_details` type to include these Tier 2 document fields by dropping/recreating them and their dependents (`get_user_companies`, `admin_get_all_companies_with_owner_info`).
+
+---
+
+## `20250520000000_create_posts_table.sql`
+
+**Purpose:** Creates the main `public.posts` table for the social feed, replacing any prior version. Defines `public.content_status_enum` and `public.handle_updated_at()` trigger function. Idempotent.
+
+**Key Changes:**
+*   `DROP TABLE IF EXISTS public.posts CASCADE;`
+*   Creates `public.content_status_enum` ('visible', 'removed_by_admin').
+*   Creates `public.posts` with:
+    *   `id` (UUID, PK)
+    *   `user_id` (UUID, FK to `public.profiles(id)` ON DELETE CASCADE)
+    *   `company_id` (UUID, FK to `public.companies(id)` ON DELETE CASCADE, optional)
+    *   `rfq_id` (UUID, FK to `public.rfqs(id)` ON DELETE SET NULL, optional)
+    *   `content` (TEXT, NOT NULL)
+    *   `media_url` (TEXT, optional)
+    *   `media_type` (TEXT, optional, e.g., 'image/jpeg')
+    *   `author_subscription_tier` (TEXT, optional)
+    *   `

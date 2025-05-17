@@ -2,7 +2,8 @@
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- Create tables
-CREATE TABLE companies (
+DROP TABLE IF EXISTS public.companies CASCADE;
+CREATE TABLE public.companies (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     name TEXT NOT NULL,
@@ -13,7 +14,8 @@ CREATE TABLE companies (
     owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE rfqs (
+DROP TABLE IF EXISTS public.rfqs CASCADE;
+CREATE TABLE public.rfqs (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     title TEXT NOT NULL,
@@ -21,114 +23,131 @@ CREATE TABLE rfqs (
     budget DECIMAL,
     currency TEXT DEFAULT 'USD',
     deadline TIMESTAMP WITH TIME ZONE,
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'closed'))
 );
 
-CREATE TABLE posts (
+DROP TABLE IF EXISTS public.posts CASCADE;
+CREATE TABLE IF NOT EXISTS public.posts (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     content TEXT NOT NULL,
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     type TEXT NOT NULL CHECK (type IN ('general', 'rfq')),
     title TEXT,
-    rfq_id UUID REFERENCES rfqs(id) ON DELETE SET NULL
+    rfq_id UUID REFERENCES public.rfqs(id) ON DELETE SET NULL
 );
 
 -- Create indexes
-CREATE INDEX companies_owner_id_idx ON companies(owner_id);
-CREATE INDEX posts_company_id_idx ON posts(company_id);
-CREATE INDEX posts_rfq_id_idx ON posts(rfq_id);
-CREATE INDEX rfqs_company_id_idx ON rfqs(company_id);
+DROP INDEX IF EXISTS companies_owner_id_idx;
+CREATE INDEX IF NOT EXISTS companies_owner_id_idx ON public.companies(owner_id);
+DROP INDEX IF EXISTS posts_company_id_idx;
+CREATE INDEX IF NOT EXISTS posts_company_id_idx ON public.posts(company_id);
+DROP INDEX IF EXISTS posts_rfq_id_idx;
+CREATE INDEX IF NOT EXISTS posts_rfq_id_idx ON public.posts(rfq_id);
+DROP INDEX IF EXISTS rfqs_company_id_idx;
+CREATE INDEX IF NOT EXISTS rfqs_company_id_idx ON public.rfqs(company_id);
 
 -- Create RLS policies
-ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rfqs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rfqs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 
 -- Companies policies
+DROP POLICY IF EXISTS "Companies are viewable by everyone" ON public.companies;
 CREATE POLICY "Companies are viewable by everyone"
-    ON companies FOR SELECT
+    ON public.companies FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Users can insert their own companies" ON public.companies;
 CREATE POLICY "Users can insert their own companies"
-    ON companies FOR INSERT
+    ON public.companies FOR INSERT
     WITH CHECK (auth.uid() = owner_id);
 
+DROP POLICY IF EXISTS "Users can update their own companies" ON public.companies;
 CREATE POLICY "Users can update their own companies"
-    ON companies FOR UPDATE
+    ON public.companies FOR UPDATE
     USING (auth.uid() = owner_id);
 
+DROP POLICY IF EXISTS "Users can delete their own companies" ON public.companies;
 CREATE POLICY "Users can delete their own companies"
-    ON companies FOR DELETE
+    ON public.companies FOR DELETE
     USING (auth.uid() = owner_id);
 
 -- RFQ policies
+DROP POLICY IF EXISTS "RFQs are viewable by everyone" ON public.rfqs;
 CREATE POLICY "RFQs are viewable by everyone"
-    ON rfqs FOR SELECT
+    ON public.rfqs FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Company owners can create RFQs" ON public.rfqs;
 CREATE POLICY "Company owners can create RFQs"
-    ON rfqs FOR INSERT
+    ON public.rfqs FOR INSERT
     WITH CHECK (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = rfqs.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.rfqs.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Company owners can update RFQs" ON public.rfqs;
 CREATE POLICY "Company owners can update RFQs"
-    ON rfqs FOR UPDATE
+    ON public.rfqs FOR UPDATE
     USING (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = rfqs.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.rfqs.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Company owners can delete RFQs" ON public.rfqs;
 CREATE POLICY "Company owners can delete RFQs"
-    ON rfqs FOR DELETE
+    ON public.rfqs FOR DELETE
     USING (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = rfqs.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.rfqs.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
 -- Posts policies
+DROP POLICY IF EXISTS "Posts are viewable by everyone" ON public.posts;
 CREATE POLICY "Posts are viewable by everyone"
-    ON posts FOR SELECT
+    ON public.posts FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Company owners can create posts" ON public.posts;
 CREATE POLICY "Company owners can create posts"
-    ON posts FOR INSERT
+    ON public.posts FOR INSERT
     WITH CHECK (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = posts.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.posts.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Company owners can update posts" ON public.posts;
 CREATE POLICY "Company owners can update posts"
-    ON posts FOR UPDATE
+    ON public.posts FOR UPDATE
     USING (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = posts.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.posts.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Company owners can delete posts" ON public.posts;
 CREATE POLICY "Company owners can delete posts"
-    ON posts FOR DELETE
+    ON public.posts FOR DELETE
     USING (EXISTS (
-        SELECT 1 FROM companies
-        WHERE companies.id = posts.company_id
-        AND companies.owner_id = auth.uid()
+        SELECT 1 FROM public.companies
+        WHERE public.companies.id = public.posts.company_id
+        AND public.companies.owner_id = auth.uid()
     ));
 
 -- Functions
-CREATE OR REPLACE FUNCTION get_user_companies(user_id UUID)
-RETURNS SETOF companies
+CREATE OR REPLACE FUNCTION public.get_user_companies(user_id UUID)
+RETURNS SETOF public.companies
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-    SELECT * FROM companies WHERE owner_id = user_id;
+    SELECT * FROM public.companies WHERE owner_id = user_id;
 $$;
 
 -- Function to internally upsert a public.profiles record for an existing auth.users user.

@@ -1,5 +1,6 @@
-create table public.profiles (
-  id uuid primary key references auth.users(id),
+DROP TABLE IF EXISTS public.profiles CASCADE;
+CREATE TABLE public.profiles (
+  id uuid primary key references auth.users(id) ON DELETE CASCADE,
   name text,
   email text,
   avatar_url text,
@@ -8,25 +9,31 @@ create table public.profiles (
 );
 
 -- Add indexes
-CREATE INDEX profiles_email_idx ON profiles(email);
-CREATE INDEX profiles_name_idx ON profiles USING gin(name gin_trgm_ops);
+DROP INDEX IF EXISTS profiles_email_idx;
+CREATE INDEX IF NOT EXISTS profiles_email_idx ON public.profiles(email);
+DROP INDEX IF EXISTS profiles_name_idx;
+CREATE INDEX IF NOT EXISTS profiles_name_idx ON public.profiles USING gin(name public.gin_trgm_ops);
 
 -- Enable RLS
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Profiles are viewable by everyone"
-    ON profiles FOR SELECT
+    ON public.profiles FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
-    ON profiles FOR UPDATE
+    ON public.profiles FOR UPDATE
     USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can delete their own profile" ON public.profiles;
 CREATE POLICY "Users can delete their own profile"
-    ON profiles FOR DELETE
+    ON public.profiles FOR DELETE
     USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Profile insert only by owner" ON public.profiles;
 CREATE POLICY "Profile insert only by owner"
-    ON profiles FOR INSERT
+    ON public.profiles FOR INSERT
     WITH CHECK (auth.uid() = id); 

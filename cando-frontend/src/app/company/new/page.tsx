@@ -26,12 +26,41 @@ export default function NewCompanyPage() {
       const userId = session.user.id
 
       // 1. Prepare company data for insertion
-      // Destructure avatar_url from formData and use the rest for initial insert
-      const { avatar_url, ...restOfFormData } = formData;
+      const { 
+        avatar_url,
+        // Fields from form that need remapping to DB column names
+        province,
+        major_metropolitan_area,
+        other_metropolitan_area_specify,
+        contact_person_name,
+        contact_person_email,
+        contact_person_phone,
+        self_attestation_completed,
+        business_number,
+        public_presence_links,
+        // year_founded is now directly in restOfFormData and matches DB
+        ...restOfFormData // Contains name, description, website, industry, services, year_founded, business_type, employee_count, revenue_range, banner_url, social_media_links, certifications, tags etc.
+      } = formData; 
+
       const companyInsertData = {
-        ...restOfFormData,
+        ...restOfFormData, // Spread fields that match DB column names (e.g., services, name, industry)
         owner_id: userId,
-        // avatar_url is intentionally omitted here, will be updated after logo upload
+        
+        // Map fields that differ from DB column names or for clarity
+        province: province, // Corrected: DB column is 'province'
+        major_metropolitan_area: major_metropolitan_area,
+        other_metropolitan_area_specify: other_metropolitan_area_specify,
+        contact_person_name: contact_person_name,
+        contact_person_email: contact_person_email,
+        contact_person_phone: contact_person_phone,
+        
+        // Map Tier 1 verification fields to their DB column names
+        self_attestation_completed: self_attestation_completed, // DB column is 'self_attestation_completed'
+        business_number: business_number, // Corrected: DB column is 'business_number'
+        public_presence_links: public_presence_links, // Corrected: DB column is 'public_presence_links'
+        
+        // avatar_url is intentionally omitted here, will be updated after logo upload if provided
+        // location field is deprecated and removed from CompanyForm
       };
 
       // 2. Create the company record

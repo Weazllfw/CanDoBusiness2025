@@ -9,9 +9,13 @@ This document provides a high-level overview of the frontend code structure loca
     *   **Subdirectories of Note**:
         *   `admin/`: Pages related to administrative functionalities (e.g., company verification).
         *   `auth/`: Pages for authentication flows (login, signup, password reset, etc.).
-        *   `company/`: Pages for creating, viewing, and editing company profiles. This would include the forms for company onboarding and potentially verification submission.
-            *   `[id]/apply-for-verification/`: Likely contains the UI for a company to apply for verification.
-        *   `dashboard/`: User dashboard pages, potentially including company management overviews.
+        *   `company/`: Handles company-related functionalities. This includes:
+            *   `new/page.tsx`: Page for creating a new company profile.
+            *   `[id]/page.tsx`: Page for viewing a specific company's public profile.
+            *   `[id]/edit/page.tsx`: Page for editing an existing company's profile.
+            *   `[id]/apply-for-verification/page.tsx`: Page for a company to apply for basic verification.
+            *   `[id]/apply-for-tier2-verification/page.tsx`: Page for a company to apply for Tier 2 verification.
+        *   `dashboard/`: User dashboard pages, potentially including company management overviews (`dashboard/companies/page.tsx`).
         *   `feed/`: Pages related to the main content feed.
         *   `messages/`: UI for the user-to-user messaging system.
         *   `rfq/`: Pages for Request for Quote functionalities.

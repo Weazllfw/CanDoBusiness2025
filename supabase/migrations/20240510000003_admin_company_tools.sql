@@ -1,7 +1,7 @@
 -- Migration: Admin tools for company verification
 
--- Function for admins to get all companies with owner details
-CREATE TYPE admin_company_details AS (
+DROP TYPE IF EXISTS public.admin_company_details CASCADE;
+CREATE TYPE public.admin_company_details AS (
   company_id uuid,
   company_name text,
   company_created_at timestamptz,
@@ -15,8 +15,8 @@ CREATE TYPE admin_company_details AS (
   admin_notes text
 );
 
-CREATE OR REPLACE FUNCTION admin_get_all_companies_with_owner_info()
-RETURNS SETOF admin_company_details
+CREATE OR REPLACE FUNCTION public.admin_get_all_companies_with_owner_info()
+RETURNS SETOF public.admin_company_details
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -46,10 +46,10 @@ BEGIN
     c.created_at DESC;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION admin_get_all_companies_with_owner_info() TO authenticated, service_role; -- Grant to roles that admins will use
+GRANT EXECUTE ON FUNCTION public.admin_get_all_companies_with_owner_info() TO authenticated, service_role; -- Grant to roles that admins will use
 
 -- Function for admins to update company verification status and notes
-CREATE OR REPLACE FUNCTION admin_update_company_verification(
+CREATE OR REPLACE FUNCTION public.admin_update_company_verification(
   p_company_id UUID,
   p_new_status VARCHAR(20),
   p_new_admin_notes TEXT
@@ -80,7 +80,7 @@ BEGIN
   RETURN updated_company;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION admin_update_company_verification(UUID, VARCHAR(20), TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_update_company_verification(UUID, VARCHAR(20), TEXT) TO authenticated, service_role;
 
 DO $$ BEGIN
   RAISE NOTICE 'Admin company verification tools (functions) added.';

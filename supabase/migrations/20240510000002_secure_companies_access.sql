@@ -127,6 +127,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS before_company_update_check_restricted_fields ON public.companies;
 CREATE TRIGGER before_company_update_check_restricted_fields
   BEFORE UPDATE ON public.companies
   FOR EACH ROW

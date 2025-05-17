@@ -84,10 +84,10 @@ GRANT EXECUTE ON FUNCTION public.get_user_companies(uuid) TO authenticated, serv
 
 
 -- Step 5: Update admin_company_details type and admin_get_all_companies_with_owner_info function
-DROP FUNCTION IF EXISTS admin_get_all_companies_with_owner_info();
-DROP TYPE IF EXISTS admin_company_details;
+DROP FUNCTION IF EXISTS public.admin_get_all_companies_with_owner_info();
+DROP TYPE IF EXISTS public.admin_company_details CASCADE;
 
-CREATE TYPE admin_company_details AS (
+CREATE TYPE public.admin_company_details AS (
   company_id uuid,
   company_name text,
   company_created_at timestamptz,
@@ -113,8 +113,8 @@ CREATE TYPE admin_company_details AS (
   services TEXT[]
 );
 
-CREATE OR REPLACE FUNCTION admin_get_all_companies_with_owner_info()
-RETURNS SETOF admin_company_details
+CREATE OR REPLACE FUNCTION public.admin_get_all_companies_with_owner_info()
+RETURNS SETOF public.admin_company_details
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -156,7 +156,7 @@ BEGIN
     c.created_at DESC;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION admin_get_all_companies_with_owner_info() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_get_all_companies_with_owner_info() TO authenticated, service_role;
 
 -- The existing admin_update_company_verification function
 -- (p_company_id UUID, p_new_status VARCHAR(20), p_new_admin_notes TEXT)

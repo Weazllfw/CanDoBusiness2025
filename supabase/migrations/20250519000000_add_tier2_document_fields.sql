@@ -2,10 +2,10 @@
 
 -- Add new columns to public.companies
 ALTER TABLE public.companies
-ADD COLUMN tier2_document_type TEXT NULL,
-ADD COLUMN tier2_document_filename TEXT NULL,
-ADD COLUMN tier2_document_storage_path TEXT NULL,
-ADD COLUMN tier2_document_uploaded_at TIMESTAMPTZ NULL;
+ADD COLUMN IF NOT EXISTS tier2_document_type TEXT NULL,
+ADD COLUMN IF NOT EXISTS tier2_document_filename TEXT NULL,
+ADD COLUMN IF NOT EXISTS tier2_document_storage_path TEXT NULL,
+ADD COLUMN IF NOT EXISTS tier2_document_uploaded_at TIMESTAMPTZ NULL;
 
 -- START DEPENDENCY HANDLING for companies_view
 -- 1. Drop functions dependent on companies_view
@@ -64,7 +64,7 @@ GRANT EXECUTE ON FUNCTION public.get_user_companies(UUID) TO authenticated, serv
 DROP FUNCTION IF EXISTS public.admin_get_all_companies_with_owner_info();
 
 -- 2. Drop the existing type
-DROP TYPE IF EXISTS public.admin_company_details;
+DROP TYPE IF EXISTS public.admin_company_details CASCADE;
 
 -- 3. Recreate the type with new fields
 CREATE TYPE public.admin_company_details AS (

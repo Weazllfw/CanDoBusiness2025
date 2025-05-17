@@ -1,2 +1,3 @@
 -- Add index for company lookups
-CREATE INDEX companies_name_idx ON companies USING gin(name gin_trgm_ops); 
+DROP INDEX IF EXISTS companies_name_idx;
+CREATE INDEX IF NOT EXISTS companies_name_idx ON public.companies USING gin(name public.gin_trgm_ops); 

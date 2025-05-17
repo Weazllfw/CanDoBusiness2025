@@ -9,6 +9,7 @@ import { Menu, Transition } from '@headlessui/react'
 import MessagesModal from '../messages/MessagesModal'
 import { useAuth } from '@/lib/hooks/useAuth'
 import CompanySelector from '../company/CompanySelector'
+import NotificationBell from './NotificationBell'
 
 export default function Header() {
   const pathname = usePathname()
@@ -69,9 +70,13 @@ export default function Header() {
           {/* Right-aligned items: Company Selector + User Profile Dropdown */}
           <div className="flex items-center space-x-3">
             {user?.id && (
-              <div className="w-56">
-                <CompanySelector currentUserId={user.id} />
-              </div>
+              <>
+                <div>
+                  <CompanySelector currentUserId={user.id} />
+                </div>
+                {/* Notification Bell */}
+                <NotificationBell />
+              </>
             )}
             {/* User Profile Dropdown */}
             <Menu as="div" className="relative">

@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 import Image from 'next/image'
-import Select, { type MultiValue } from 'react-select'
+import Select, { type MultiValue, type SingleValue } from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import InputMask from 'react-input-mask'
 
@@ -37,6 +37,8 @@ for (const [code, name] of Object.entries(canadianProvinces)) {
 provinceNameToCode['NewfoundlandAndLabrador'] = 'NL';
 provinceNameToCode['NorthwestTerritories'] = 'NT';
 provinceNameToCode['PrinceEdwardIsland'] = 'PE';
+provinceNameToCode['YukonTerritory'] = 'YT'; // Added for Yukon
+provinceNameToCode['Yukon'] = 'YT'; // Also map plain Yukon
 
 
 const canadianMetropolitanAreasRaw = {
@@ -109,6 +111,52 @@ capabilityTagsRaw.forEach(tag => PREDEFINED_SERVICES[generateKey(tag)] = tag);
 const serviceOptions = Object.keys(PREDEFINED_SERVICES).map(key => ({ value: key, label: PREDEFINED_SERVICES[key] }));
 const predefinedServiceKeys = Object.keys(PREDEFINED_SERVICES) as [string, ...string[]];
 
+// Business Type Options
+const BUSINESS_TYPES = {
+  SOLE_PROPRIETORSHIP: 'Sole Proprietorship',
+  PARTNERSHIP: 'Partnership',
+  CORPORATION: 'Corporation',
+  COOPERATIVE: 'Cooperative',
+  NON_PROFIT: 'Non-profit',
+  OTHER: 'Other',
+} as const;
+const businessTypeOptions = Object.entries(BUSINESS_TYPES).map(([value, label]) => ({ value, label }));
+const predefinedBusinessTypeKeys = Object.keys(BUSINESS_TYPES) as [string, ...string[]];
+
+// Employee Count Options
+const EMPLOYEE_COUNTS = {
+  '1_10': '1-10 employees',
+  '11_50': '11-50 employees',
+  '51_200': '51-200 employees',
+  '201_500': '201-500 employees',
+  '501_1000': '501-1000 employees',
+  '1000_PLUS': '1000+ employees',
+} as const;
+const employeeCountOptions = Object.entries(EMPLOYEE_COUNTS).map(([value, label]) => ({ value, label }));
+const predefinedEmployeeCountKeys = Object.keys(EMPLOYEE_COUNTS) as [string, ...string[]];
+
+// Revenue Range Options
+const REVENUE_RANGES = {
+  '0_100K': '$0 - $100K',
+  '100K_500K': '$100K - $500K',
+  '500K_1M': '$500K - $1M',
+  '1M_5M': '$1M - $5M',
+  '5M_10M': '$5M - $10M',
+  '10M_PLUS': '$10M+',
+} as const;
+const revenueRangeOptions = Object.entries(REVENUE_RANGES).map(([value, label]) => ({ value, label }));
+const predefinedRevenueRangeKeys = Object.keys(REVENUE_RANGES) as [string, ...string[]];
+
+// Social Media Platform Options (example)
+const socialMediaPlatformOptions = [
+  { value: 'LINKEDIN', label: 'LinkedIn' },
+  { value: 'TWITTER_X', label: 'Twitter / X' },
+  { value: 'FACEBOOK', label: 'Facebook' },
+  { value: 'INSTAGRAM', label: 'Instagram' },
+  { value: 'YOUTUBE', label: 'YouTube' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 const PREDEFINED_METRO_AREAS = {
   GTA: 'Greater Toronto Area',
   GVA: 'Metro Vancouver',
@@ -126,14 +174,13 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_COMPANY_NAME_LENGTH = 100;
 const MAX_OTHER_METRO_LENGTH = 100;
 const baseCompanySchemaObject = {
-  name: z.string().min(2, 'Name must be at least 2 characters').max(MAX_COMPANY_NAME_LENGTH, `Company name must be ${MAX_COMPANY_NAME_LENGTH} characters or less`),
-  description: z.string().min(1, 'Description is required').max(MAX_DESCRIPTION_LENGTH, `Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`),
-  website: z.string().url('Invalid website URL').optional().or(z.literal('')),
-  location: z.string().optional(),
-  industry: z.array(z.enum(predefinedIndustryKeys)).min(1, 'Please select at least one industry').max(3, 'Select up to 3 industries'),
-  avatar_url: z.string().url().optional().nullable(),
-  street_address: z.string().optional(),
-  city: z.string().optional(),
+  name: z.string().min(1, "Company name is required.").max(MAX_COMPANY_NAME_LENGTH, `Company name cannot exceed ${MAX_COMPANY_NAME_LENGTH} characters.`),
+  description: z.string().min(1, "Description is required.").max(MAX_DESCRIPTION_LENGTH, `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters.`),
+  website: z.string().url("Invalid URL format. Make sure to include http:// or https://").optional().or(z.literal('')),
+  avatar_url: z.string().nullable().optional(),
+  banner_url: z.string().url("Invalid URL format for banner.").optional().or(z.literal('')).nullable(),
+  street_address: z.string().optional().or(z.literal('')),
+  city: z.string().optional().or(z.literal('')),
   province: z.string().refine(val => val !== '' && Object.keys(canadianProvinces).includes(val), {
     message: "Province/Territory is required and must be a valid selection.",
   }) as z.ZodType<keyof typeof canadianProvinces | ''>,
@@ -155,10 +202,26 @@ const baseCompanySchemaObject = {
     .regex(/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/, "Invalid phone number format")
     .optional().or(z.literal('')),
   services: z.array(z.string()).min(1, "Please select or add at least one service"),
-  // Tier 1 Verification Fields
-  self_attestation_completed: z.boolean().optional(), // Optional for now, might become z.literal(true) if submitting for verification
-  business_number: z.string().optional(),
-  public_presence_links: z.array(z.string()).optional(), // Array of strings, can be URLs or other identifiers
+  
+  // New Fields
+  year_founded: z.coerce.number().int().min(1800, "Year must be 1800 or later.").max(new Date().getFullYear(), `Year cannot be in the future.`).optional().nullable(),
+  business_type: z.enum(predefinedBusinessTypeKeys).optional().or(z.literal('')),
+  employee_count: z.enum(predefinedEmployeeCountKeys).optional().or(z.literal('')),
+  revenue_range: z.enum(predefinedRevenueRangeKeys).optional().or(z.literal('')),
+  social_media_links: z.array(
+    z.object({
+      platform: z.string().min(1, "Platform is required."),
+      url: z.string().url("Invalid URL format."),
+    })
+  ).optional(),
+  certifications: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+
+  // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
+  // self_attestation_completed: z.boolean().optional(),
+  // business_number: z.string().optional(),
+  // public_presence_links: z.array(z.string()).optional(), 
+  industry: z.enum(predefinedIndustryKeys, { errorMap: () => ({ message: "Industry is required." }) }),
 };
 
 // Create the object schema and then apply superRefine
@@ -214,8 +277,8 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
       name: initialData?.name || '',
       description: initialData?.description || '',
       website: initialData?.website || '',
-      location: initialData?.location || '',
       avatar_url: initialData?.avatar_url || null,
+      banner_url: initialData?.banner_url || null,
       street_address: initialData?.street_address || '',
       city: initialData?.city || '',
       province: initialData?.province || '',
@@ -225,12 +288,20 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
       contact_person_name: initialData?.contact_person_name || '',
       contact_person_email: initialData?.contact_person_email || '',
       contact_person_phone: initialData?.contact_person_phone || '',
-      industry: ensureStringArray(initialData?.industry),
+      industry: initialData?.industry || '',
       services: ensureStringArray(initialData?.services),
-      // Tier 1 Verification Fields
-      self_attestation_completed: initialData?.self_attestation_completed || false,
-      business_number: initialData?.business_number || '',
-      public_presence_links: ensureStringArray(initialData?.public_presence_links),
+      // New fields
+      year_founded: initialData?.year_founded || null,
+      business_type: initialData?.business_type || '',
+      employee_count: initialData?.employee_count || '',
+      revenue_range: initialData?.revenue_range || '',
+      social_media_links: initialData?.social_media_links || [],
+      certifications: initialData?.certifications || [],
+      tags: initialData?.tags || [],
+      // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
+      // self_attestation_completed: initialData?.self_attestation_completed || false,
+      // business_number: initialData?.business_number || '',
+      // public_presence_links: ensureStringArray(initialData?.public_presence_links),
     },
   });
 
@@ -240,14 +311,19 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
   const nameValue = form.watch('name');
   const otherMetroSpecifyValue = form.watch('other_metropolitan_area_specify');
 
+  const { fields: socialFields, append: appendSocial, remove: removeSocial } = useFieldArray({
+    control: form.control,
+    name: "social_media_links"
+  });
+
   useEffect(() => {
     if (initialData) {
       form.reset({
         name: initialData.name || '',
         description: initialData.description || '',
         website: initialData.website || '',
-        location: initialData.location || '',
         avatar_url: initialData.avatar_url || null,
+        banner_url: initialData.banner_url || null,
         street_address: initialData.street_address || '',
         city: initialData.city || '',
         province: initialData.province || '',
@@ -257,12 +333,20 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
         contact_person_name: initialData.contact_person_name || '',
         contact_person_email: initialData.contact_person_email || '',
         contact_person_phone: initialData.contact_person_phone || '',
-        industry: ensureStringArray(initialData.industry),
+        industry: initialData.industry || '',
         services: ensureStringArray(initialData.services),
-        // Tier 1 Verification Fields
-        self_attestation_completed: initialData.self_attestation_completed || false,
-        business_number: initialData.business_number || '',
-        public_presence_links: ensureStringArray(initialData.public_presence_links),
+        // New fields
+        year_founded: initialData.year_founded || null,
+        business_type: initialData.business_type || '',
+        employee_count: initialData.employee_count || '',
+        revenue_range: initialData.revenue_range || '',
+        social_media_links: initialData.social_media_links || [],
+        certifications: initialData.certifications || [],
+        tags: initialData.tags || [],
+        // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
+        // self_attestation_completed: initialData.self_attestation_completed || false,
+        // business_number: initialData.business_number || '',
+        // public_presence_links: ensureStringArray(initialData.public_presence_links),
       });
       if (initialData.avatar_url) {
         setLogoPreview(initialData.avatar_url);
@@ -274,8 +358,8 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
         name: '',
         description: '',
         website: '',
-        location: '',
         avatar_url: null,
+        banner_url: null,
         street_address: '',
         city: '',
         province: '',
@@ -285,12 +369,20 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
         contact_person_name: '',
         contact_person_email: '',
         contact_person_phone: '',
-        industry: ensureStringArray(undefined),
+        industry: '',
         services: ensureStringArray(undefined),
-        // Tier 1 Verification Fields
-        self_attestation_completed: false,
-        business_number: '',
-        public_presence_links: ensureStringArray(undefined),
+        // New fields
+        year_founded: null,
+        business_type: '',
+        employee_count: '',
+        revenue_range: '',
+        social_media_links: [],
+        certifications: [],
+        tags: [],
+        // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
+        // self_attestation_completed: false,
+        // business_number: '',
+        // public_presence_links: ensureStringArray(undefined),
       });
       setLogoPreview(null);
     }
@@ -462,7 +554,7 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
           </div>
 
           <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-            <label htmlFor="industry" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Industry (Up to 3) *</label>
+            <label htmlFor="industry" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Industry *</label>
             <div className="mt-1 sm:mt-0 sm:col-span-2">
               <Controller
                 name="industry"
@@ -471,19 +563,19 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
                   <Select
                     {...field}
                     instanceId="industry-select"
-                    isMulti
                     options={industryOptions}
                     className="max-w-lg block w-full sm:text-sm"
                     styles={selectStyles}
-                    value={industryOptions.filter(option => field.value?.includes(option.value))}
-                    onChange={(selectedOptions: MultiValue<{ value: string; label: string; }>) => 
-                      field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])
+                    value={industryOptions.find(option => option.value === field.value) || null}
+                    onChange={(selectedOption: any) => 
+                      field.onChange(selectedOption ? selectedOption.value : '')
                     }
+                    isClearable
+                    placeholder="Select an industry..."
                   />
                 )}
               />
-              {form.formState.errors.industry && <p className="mt-1 text-sm text-red-500">{form.formState.errors.industry.message || (form.formState.errors.industry as any).root?.message}</p>}
-              <p className="mt-1 text-xs text-gray-500">Select up to 3 industries.</p>
+              {form.formState.errors.industry && <p className="mt-1 text-sm text-red-500">{form.formState.errors.industry.message}</p>}
             </div>
           </div>
 
@@ -716,71 +808,209 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
       
       <hr className="my-8 border-gray-300" />
 
-      {/* Tier 1 Verification Section */}
+      {/* New Section: Additional Company Details */}
       <div className="pt-8 space-y-6 sm:pt-10 sm:space-y-5">
         <div>
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Business Verification (Tier 1)</h3>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">Complete this section to apply for Tier 1 Verification. Admins will review your submission.</p>
+          <h3 className="text-lg leading-6 font-medium text-gray-900">Additional Company Details</h3>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">Provide more specifics about your company.</p>
         </div>
         <div className="space-y-6 sm:space-y-5">
-          {/* Business Number */}
+
+          {/* Year Founded */}
           <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-            <label htmlFor="business_number" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Corporate / Business Number </label>
+            <label htmlFor="year_founded" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Year Founded </label>
             <div className="mt-1 sm:mt-0 sm:col-span-2">
-              <input type="text" id="business_number" {...form.register('business_number')} className="max-w-lg block w-full shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm border-gray-300 rounded-md" />
-              {form.formState.errors.business_number && <p className="mt-1 text-sm text-red-500">{form.formState.errors.business_number.message}</p>}
-              <p className="mt-1 text-xs text-gray-500">Enter your Federal Corporation Number or Provincial Business Number (BN).</p>
+              <input type="number" id="year_founded" {...form.register('year_founded', { valueAsNumber: true })} className="max-w-lg block w-full shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm border-gray-300 rounded-md" />
+              {form.formState.errors.year_founded && <p className="mt-1 text-sm text-red-500">{form.formState.errors.year_founded.message}</p>}
             </div>
           </div>
 
-          {/* Public Presence Links */}
+          {/* Business Type */}
           <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-            <label htmlFor="public_presence_links" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Public Presence Links (Optional) </label>
+            <label htmlFor="business_type" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Business Type </label>
             <div className="mt-1 sm:mt-0 sm:col-span-2">
               <Controller
-                name="public_presence_links"
+                name="business_type"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    {...field}
+                    instanceId="business_type-select"
+                    options={businessTypeOptions}
+                    styles={selectStyles}
+                    className="max-w-lg block w-full sm:text-sm"
+                    value={businessTypeOptions.find(option => option.value === field.value) || null}
+                    onChange={(selectedOption: SingleValue<{ value: string; label: string; }>) => field.onChange(selectedOption ? selectedOption.value : '')}
+                    isClearable
+                    placeholder="Select business type..."
+                  />
+                )}
+              />
+              {form.formState.errors.business_type && <p className="mt-1 text-sm text-red-500">{form.formState.errors.business_type.message}</p>}
+            </div>
+          </div>
+
+          {/* Employee Count */}
+          <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+            <label htmlFor="employee_count" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Number of Employees </label>
+            <div className="mt-1 sm:mt-0 sm:col-span-2">
+              <Controller
+                name="employee_count"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    {...field}
+                    instanceId="employee_count-select"
+                    options={employeeCountOptions}
+                    styles={selectStyles}
+                    className="max-w-lg block w-full sm:text-sm"
+                    value={employeeCountOptions.find(option => option.value === field.value) || null}
+                    onChange={(selectedOption: SingleValue<{ value: string; label: string; }>) => field.onChange(selectedOption ? selectedOption.value : '')}
+                    isClearable
+                    placeholder="Select employee count..."
+                  />
+                )}
+              />
+              {form.formState.errors.employee_count && <p className="mt-1 text-sm text-red-500">{form.formState.errors.employee_count.message}</p>}
+            </div>
+          </div>
+
+          {/* Revenue Range */}
+          <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+            <label htmlFor="revenue_range" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Annual Revenue Range </label>
+            <div className="mt-1 sm:mt-0 sm:col-span-2">
+              <Controller
+                name="revenue_range"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    {...field}
+                    instanceId="revenue_range-select"
+                    options={revenueRangeOptions}
+                    styles={selectStyles}
+                    className="max-w-lg block w-full sm:text-sm"
+                    value={revenueRangeOptions.find(option => option.value === field.value) || null}
+                    onChange={(selectedOption: SingleValue<{ value: string; label: string; }>) => field.onChange(selectedOption ? selectedOption.value : '')}
+                    isClearable
+                    placeholder="Select revenue range..."
+                  />
+                )}
+              />
+              {form.formState.errors.revenue_range && <p className="mt-1 text-sm text-red-500">{form.formState.errors.revenue_range.message}</p>}
+            </div>
+          </div>
+
+          {/* Banner URL */}
+          <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+            <label htmlFor="banner_url" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Banner Image URL </label>
+            <div className="mt-1 sm:mt-0 sm:col-span-2">
+              <input 
+                type="url" 
+                id="banner_url" 
+                {...form.register('banner_url')} 
+                placeholder="https://example.com/banner.jpg"
+                className="max-w-lg block w-full shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm border-gray-300 rounded-md" 
+              />
+              {form.formState.errors.banner_url && <p className="mt-1 text-sm text-red-500">{form.formState.errors.banner_url.message}</p>}
+            </div>
+          </div>
+
+          {/* Social Media Links */}
+          <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+            <label className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Social Media Links </label>
+            <div className="mt-1 sm:mt-0 sm:col-span-2 space-y-3">
+              {socialFields.map((item, index) => (
+                <div key={item.id} className="flex items-center space-x-2">
+                  <div className="flex-grow">
+                    <Controller
+                      name={`social_media_links.${index}.platform` as const}
+                      control={form.control}
+                      render={({ field }) => (
+                        <Select
+                          {...field}
+                          instanceId={`social-platform-${index}`}
+                          options={socialMediaPlatformOptions}
+                          styles={selectStyles}
+                          className="w-full sm:text-sm"
+                          placeholder="Platform..."
+                          value={socialMediaPlatformOptions.find(option => option.value === field.value) || null}
+                          onChange={(selectedOption: SingleValue<{value: string; label: string}>) => field.onChange(selectedOption ? selectedOption.value : '')}
+                        />
+                      )}
+                    />
+                     {form.formState.errors.social_media_links?.[index]?.platform && <p className="mt-1 text-sm text-red-500">{form.formState.errors.social_media_links?.[index]?.platform?.message}</p>}
+                  </div>
+                  <div className="flex-grow">
+                    <input 
+                      type="url" 
+                      {...form.register(`social_media_links.${index}.url` as const)} 
+                      placeholder="https://linkedin.com/company/..."
+                      className="block w-full shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm border-gray-300 rounded-md" 
+                    />
+                    {form.formState.errors.social_media_links?.[index]?.url && <p className="mt-1 text-sm text-red-500">{form.formState.errors.social_media_links?.[index]?.url?.message}</p>}
+                  </div>
+                  <button type="button" onClick={() => removeSocial(index)} className="text-red-600 hover:text-red-800 text-sm">Remove</button>
+                </div>
+              ))}
+              <button 
+                type="button" 
+                onClick={() => appendSocial({ platform: '', url: '' })} 
+                className="mt-2 text-sm font-medium text-primary-600 hover:text-primary-500"
+              >
+                + Add Social Media Link
+              </button>
+            </div>
+          </div>
+
+          {/* Certifications */}
+          <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+            <label htmlFor="certifications" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Certifications </label>
+            <div className="mt-1 sm:mt-0 sm:col-span-2">
+              <Controller
+                name="certifications"
                 control={form.control}
                 render={({ field }) => (
                   <CreatableSelect
                     {...field}
                     isMulti
-                    options={[]}
-                    styles={selectStyles} // Assuming selectStyles is defined elsewhere and appropriate
+                    options={[]} // No predefined options for now
+                    styles={selectStyles}
                     className="max-w-lg block w-full sm:text-sm"
-                    classNamePrefix="select"
-                    placeholder="Enter links (e.g., LinkedIn, Website)..."
+                    placeholder="Enter certifications..."
                     value={field.value?.map(val => ({ value: val, label: val })) || []}
-                    onChange={(selectedOptions: MultiValue<{ value: string; label: string }>) => 
-                      field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])
-                    }
-                    formatCreateLabel={(inputValue) => `Add link: "${inputValue}"...`}
-                    instanceId="public-presence-links-select"
+                    onChange={(selectedOptions: MultiValue<{ value: string; label: string }>) => field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])}
+                    formatCreateLabel={(inputValue) => `Add "${inputValue}"...`}
+                    instanceId="certifications-creatable-select"
                   />
                 )}
               />
-              {form.formState.errors.public_presence_links && <p className="mt-1 text-sm text-red-500">{form.formState.errors.public_presence_links.message}</p>}
-              <p className="mt-1 text-xs text-gray-500">Provide links to your company website, LinkedIn profile, or other public business pages.</p>
+              {form.formState.errors.certifications && <p className="mt-1 text-sm text-red-500">{form.formState.errors.certifications.message}</p>}
             </div>
           </div>
 
-          {/* Self-Attestation Clause */}
+          {/* Tags */}
           <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-            <label htmlFor="self_attestation_completed" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Self-Attestation *</label>
+            <label htmlFor="tags" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2"> Tags / Keywords </label>
             <div className="mt-1 sm:mt-0 sm:col-span-2">
-              <div className="flex items-start">
-                <div className="flex items-center h-5">
-                  <input 
-                    id="self_attestation_completed" 
-                    type="checkbox" 
-                    {...form.register('self_attestation_completed')} 
-                    className="focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded"
+              <Controller
+                name="tags"
+                control={form.control}
+                render={({ field }) => (
+                  <CreatableSelect
+                    {...field}
+                    isMulti
+                    options={[]} // No predefined options for now
+                    styles={selectStyles}
+                    className="max-w-lg block w-full sm:text-sm"
+                    placeholder="Enter tags or keywords..."
+                    value={field.value?.map(val => ({ value: val, label: val })) || []}
+                    onChange={(selectedOptions: MultiValue<{ value: string; label: string }>) => field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])}
+                    formatCreateLabel={(inputValue) => `Add "${inputValue}"...`}
+                    instanceId="tags-creatable-select"
                   />
-                </div>
-                <div className="ml-3 text-sm">
-                  <label htmlFor="self_attestation_completed" className="font-medium text-gray-700">I certify I am authorized to represent this business and all submitted information is true.</label>
-                </div>
-              </div>
-              {form.formState.errors.self_attestation_completed && <p className="mt-1 text-sm text-red-500">{form.formState.errors.self_attestation_completed.message}</p>}
+                )}
+              />
+              {form.formState.errors.tags && <p className="mt-1 text-sm text-red-500">{form.formState.errors.tags.message}</p>}
             </div>
           </div>
 

@@ -6,13 +6,11 @@ RETURNS TABLE(
   count BIGINT
 )
 LANGUAGE sql
-SECURITY DEFINER -- Or SECURITY INVOKER if RLS on companies is sufficient and you want to restrict by admin view policies
+SECURITY DEFINER
+SET search_path = public, internal -- Added search_path
 AS $$
-  -- Ensure the user calling this is an admin if it's SECURITY DEFINER
-  -- For SECURITY INVOKER, RLS on companies would naturally apply, but admin might need full view.
-  -- Assuming admins should see all stats, so a check might be good if DEFINER is used without other RLS.
-  -- However, for a simple count, this might be overly restrictive if just any authenticated user could see stats.
-  -- For now, let's assume only admins call this from the admin page, where page access is already restricted.
+  SELECT internal.ensure_admin(); -- Call the new helper function
+
   SELECT
     COALESCE(verification_status, 'UNKNOWN') as status,
     COUNT(*) as count

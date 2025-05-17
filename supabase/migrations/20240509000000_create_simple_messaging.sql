@@ -1,6 +1,7 @@
 -- supabase/migrations/YYYYMMDDHHMMSS_create_simple_messaging.sql
 
 -- 1. Create Messages Table
+DROP TABLE IF EXISTS public.messages CASCADE;
 CREATE TABLE public.messages (
     id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -12,18 +13,23 @@ CREATE TABLE public.messages (
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 -- Add indexes for performance
-CREATE INDEX messages_sender_id_idx ON public.messages(sender_id);
-CREATE INDEX messages_receiver_id_idx ON public.messages(receiver_id);
-CREATE INDEX messages_created_at_idx ON public.messages(created_at DESC);
+DROP INDEX IF EXISTS messages_sender_id_idx;
+CREATE INDEX IF NOT EXISTS messages_sender_id_idx ON public.messages(sender_id);
+DROP INDEX IF EXISTS messages_receiver_id_idx;
+CREATE INDEX IF NOT EXISTS messages_receiver_id_idx ON public.messages(receiver_id);
+DROP INDEX IF EXISTS messages_created_at_idx;
+CREATE INDEX IF NOT EXISTS messages_created_at_idx ON public.messages(created_at DESC);
 
 -- 2. RLS Policies for Messages
+DROP POLICY IF EXISTS "Users can view their own messages" ON public.messages;
 CREATE POLICY "Users can view their own messages" 
 ON public.messages FOR SELECT
 USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 
 -- Drop the old policy first if it exists to avoid conflicts
 DROP POLICY IF EXISTS "Users can send messages" ON public.messages;
-DROP POLICY IF EXISTS "Users or System can send messages" ON public.messages; -- Drop the one we just tried too
+-- Drop the potentially renamed policy if it exists to avoid conflicts before recreating the current one
+DROP POLICY IF EXISTS "Users or System can send messages" ON public.messages;
 
 -- Allow users to send messages as themselves, OR allow the system user to send messages (if done by postgres role).
 -- Using the actual system user UUID for rmarshall@itmarshall.net
@@ -43,6 +49,7 @@ WITH CHECK (
   )
 );
 
+DROP POLICY IF EXISTS "Users can mark their received messages as read" ON public.messages;
 CREATE POLICY "Users can mark their received messages as read" 
 ON public.messages FOR UPDATE
 USING (auth.uid() = receiver_id)

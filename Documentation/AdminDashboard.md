@@ -6,9 +6,14 @@ The Admin Dashboard provides administrators with tools to manage and oversee key
 
 ## 2. Access Control
 
--   Access to the Admin Dashboard page (`/admin`) is restricted to users whose email addresses are present in a predefined list (`ADMIN_EMAILS`) within the `cando-frontend/src/app/admin/page.tsx` component.
--   Users who are not logged in are redirected to the login page (`/auth/login`).
--   Logged-in users who are not on the `ADMIN_EMAILS` list are redirected to the main feed (`/feed`).
+Access to administrator functionalities is typically managed at two levels:
+
+-   **Frontend UI Access**: The Admin Dashboard page (e.g., `/admin`) often restricts UI visibility. For example, in `cando-frontend/src/app/admin/page.tsx`, this might be controlled by checking if the logged-in user's email is in a predefined `ADMIN_EMAILS` list. This is a client-side or page-level control.
+-   **Backend Privileges**: True administrative privileges for accessing sensitive data or executing restricted actions are enforced at the database level. This relies on the `internal.is_admin(user_id)` SQL function and related mechanisms like `internal.ensure_admin()`.
+
+For comprehensive details on how administrators are identified and managed, including the workings of `internal.is_admin()`, please refer to `Documentation/AdministratorSystem.md`.
+
+Users who are not logged in are typically redirected to the login page (e.g., `/auth/login`). Logged-in users who do not meet admin criteria (both frontend and backend where applicable) should be prevented from accessing admin resources or functionality.
 
 ## 3. Key Features & Components
 

@@ -45,11 +45,11 @@ export default function EditCompanyPage() {
         name: data.name,
         description: data.description || '',
         website: data.website || '',
-        industry: data.industry || [],
+        industry: data.industry || '',
         avatar_url: data.avatar_url || null,
         street_address: data.street_address || '',
         city: data.city || '',
-        province: data.province || '',
+        province: (data.province as CompanyFormData['province']) || '',
         postal_code: data.postal_code || '',
         major_metropolitan_area: data.major_metropolitan_area || '',
         other_metropolitan_area_specify: data.other_metropolitan_area_specify || '',
@@ -58,6 +58,17 @@ export default function EditCompanyPage() {
         contact_person_phone: data.contact_person_phone || '',
         services: data.services || [],
         owner_id: data.owner_id,
+        banner_url: data.banner_url || null,
+        year_founded: data.year_founded || null,
+        business_type: data.business_type || '',
+        employee_count: data.employee_count || '',
+        revenue_range: data.revenue_range || '',
+        social_media_links: (data.social_media_links as any) || [],
+        certifications: data.certifications || [],
+        tags: data.tags || [],
+        self_attestation_completed: data.self_attestation_completed || false,
+        business_number: data.business_number || '',
+        public_presence_links: data.public_presence_links || [],
       };
       setFormInitialData(companyFormData);
 
@@ -132,11 +143,42 @@ export default function EditCompanyPage() {
         newAvatarUrl = null; 
       }
 
+      // Destructure formData to explicitly map to DB columns
+      const {
+        // Fields from form that need remapping to DB column names or are already correct
+        province,                             // from form, maps to province_territory_code
+        major_metropolitan_area,          // from form, maps to major_metropolitan_area
+        other_metropolitan_area_specify,  // from form, maps to other_metropolitan_area_specify
+        contact_person_name,              // from form, maps to contact_person_name
+        contact_person_email,             // from form, maps to contact_person_email
+        contact_person_phone,             // from form, maps to contact_person_phone
+        services,                           // from form, maps to services_provided
+        self_attestation_completed,       // from form, maps to self_attestation_completed
+        business_number,                  // from form, maps to tier1_business_number (or business_number if that's the direct DB col)
+        public_presence_links,            // from form, maps to tier1_public_presence_links (or public_presence_links)
+        // owner_id and id are handled separately or not updated
+        // avatar_url is handled by newAvatarUrl
+        ...restOfFormData // Contains name, description, website, industry, year_founded, etc. that match DB columns
+      } = formData;
+
       const companyUpdateData = {
-        ...formData,
+        ...restOfFormData, // Spread fields that directly match DB column names
         avatar_url: newAvatarUrl,
+        
+        // Explicitly map fields that differ or for clarity
+        province: province,
+        major_metropolitan_area: major_metropolitan_area,
+        other_metropolitan_area_specify: other_metropolitan_area_specify,
+        contact_person_name: contact_person_name,
+        contact_person_email: contact_person_email,
+        contact_person_phone: contact_person_phone,
+        services: services,
+        self_attestation_completed: self_attestation_completed,
+        business_number: business_number,
+        public_presence_links: public_presence_links,
       };
 
+      // Ensure owner_id and id are not part of the update payload if they came via formData spread
       delete (companyUpdateData as any).owner_id;
       delete (companyUpdateData as any).id; 
 
