@@ -144,68 +144,88 @@ To ensure the welcome message sender (system admin) has a consistent identity an
 
 ## 5. Frontend Components & Logic
 
-The frontend messaging UI is primarily managed within `cando-frontend/src/components/messages/MessagesModal.tsx`.
+### 5.1. Core Components (`src/components/messages/`)
 
-**5.1. `cando-frontend/src/lib/hooks/useMessages.ts` (Conceptual)**
--   **Responsibilities (assumed based on usage):**
-    -   Fetches the list of conversations for the current user by calling the `public.get_conversations` RPC.
-    -   Fetches messages for a selected conversation (likely querying `public.message_view` with filters `sender_id`, `receiver_id`).
-    -   Handles sending new messages by calling an RPC that inserts into `public.messages`.
-    -   Subscribes to Supabase Realtime events on the `public.messages` table for new inserts, updating the conversation list and message views in real-time.
-    -   Provides state for `conversations`, `currentMessages`, loading states (`isLoadingConversations`).
+*   **`MessagesModal.tsx`**: The main messaging interface component
+    *   Manages conversation state and real-time updates
+    *   Integrates all sub-components
+    *   Handles conversation switching and message loading
+    *   Uses `useMessages` hook for data management
 
-**5.2. `cando-frontend/src/components/messages/MessagesModal.tsx`**
--   The main component for the messaging interface, rendered as a modal dialog using Headless UI.
--   **State Management:**
-    -   `selectedConversationId: string | null`: Stores the `other_user_id` of the currently active conversation.
-    -   `messageText: string`: Stores the content of the message being typed.
--   **Effects & Logic:**
-    -   An `useEffect` hook loads messages via `loadConversationMessages(selectedConversationId)` when `selectedConversationId` changes.
-    -   A crucial `useEffect` hook **auto-selects the first conversation** if no conversation is currently selected and the `conversations` list is loaded and non-empty. This is key for displaying the welcome message to new users.
-        ```javascript
-        useEffect(() => {
-          if (!selectedConversationId && conversations && conversations.length > 0) {
-            const firstConv = conversations[0];
-            if (firstConv && firstConv.other_user_id) {
-              setSelectedConversationId(firstConv.other_user_id);
-            }
-          }
-        }, [conversations, selectedConversationId]);
-        ```
--   **Rendering:**
-    -   Displays a list of "Recent conversations" using data mapped from the `conversations` array from `useMessages`. Each item shows the other user's avatar, name, last message snippet, and unread count.
-    -   Displays the main chat area for the `activeConversationDetails` (derived from `selectedConversationId`):
-        -   Header: Shows the other user's avatar and name.
-        -   Message List: Renders messages from `currentMessages`.
-        -   Input Area: For typing and sending new messages.
-    -   Shows a "No conversation selected" message if `activeConversationDetails` is null.
+*   **`ThreadList.tsx`**: Displays conversation list
+    *   Shows recent conversations with preview
+    *   Displays unread message counts
+    *   Handles conversation selection
+    *   Real-time conversation updates
 
-**5.3. Other Supporting Components:**
--   `ThreadList.tsx`: Renders the list of conversation threads (used within `MessagesModal.tsx` and potentially `MessageClient.tsx`).
--   `MessageList.tsx`: Renders the list of individual messages within an active chat.
--   `MessageInput.tsx`: The text area and send button.
--   `ThreadHeader.tsx`: Displays the name and avatar of the other user in the active chat.
+*   **`ThreadHeader.tsx`**: Shows active conversation header
+    *   Displays user/company avatar and name
+    *   Shows online status (if implemented)
+    *   Provides conversation actions menu
 
-**5.4. `cando-frontend/src/app/messages/[otherUserId]/MessageClient.tsx`**
--   A client component designed for a page-based chat view (where `otherUserId` comes from URL params).
--   It also renders a `ThreadList` and a main chat area.
--   Previously, we attempted to add auto-redirect logic here, but this is less relevant if `MessagesModal.tsx` is the primary UI. The modal's internal auto-selection is now the effective mechanism.
+*   **`MessageList.tsx`**: Displays message thread
+    *   Renders individual messages with timestamps
+    *   Supports message grouping
+    *   Handles scroll position management
+    *   Shows read status indicators
 
-**5.5. `cando-frontend/next.config.js`**
--   Configured with `images.remotePatterns` to allow image loading from external hostnames like `placehold.co` (used for the admin avatar placeholder).
-    ```javascript
-    images: {
-      remotePatterns: [
-        // ... other patterns
-        {
-          protocol: 'https',
-          hostname: 'placehold.co',
-          port: '',
-          pathname: '/**',
-        },
-      ],
-    },
-    ```
+*   **`MessageInput.tsx`**: Message composition interface
+    *   Text input with emoji support
+    *   File attachment integration
+    *   Send message functionality
+    *   Typing indicator support
+
+*   **`FileUpload.tsx`**: Handles file attachments
+    *   Drag-and-drop support
+    *   File type validation
+    *   Upload progress indication
+    *   Preview generation
+    *   Integration with Supabase Storage
+
+*   **`QuoteManager.tsx`**: Message quoting functionality
+    *   Quote selection interface
+    *   Quote preview display
+    *   Quote editing capabilities
+    *   Integration with message composition
+
+### 5.2. Hooks and Utilities
+
+*   **`useMessages` Hook**:
+    *   Manages message state
+    *   Handles real-time updates
+    *   Provides message operations (send, read, etc.)
+    *   Manages conversation data
+
+*   **Message Storage Integration**:
+    *   Uses 'message-attachments' storage bucket
+    *   Implements secure file access
+    *   Handles file cleanup
+
+### 5.3. Key Features
+
+*   **Real-time Messaging**:
+    *   Instant message delivery
+    *   Typing indicators
+    *   Read receipts
+    *   Online status (if implemented)
+
+*   **File Sharing**:
+    *   Multiple file upload support
+    *   Preview generation
+    *   Progress tracking
+    *   Secure storage and access
+
+*   **Message Quoting**:
+    *   Select and quote messages
+    *   Quote preview in composition
+    *   Nested quote support
+    *   Quote editing
+
+*   **Conversation Management**:
+    *   Recent conversations list
+    *   Unread message tracking
+    *   Conversation search (if implemented)
+    *   Archive/delete functionality
 
 ## 6. Key Workflows
 

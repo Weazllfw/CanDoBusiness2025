@@ -1,37 +1,194 @@
 # Networking System
 
-This document outlines the database schema and intended functionality for the user and company networking system within the CanDo Business Network.
+## 1. Overview
 
-## Purpose
+The Networking System enables connections between users and companies within the platform. It supports both user-to-user and company-to-company relationships, facilitating business networking and collaboration opportunities.
 
-The networking system enables users and companies to connect with each other in various ways, fostering a professional network. It supports:
-*   Direct connections between individual users.
-*   Users following companies.
-*   Companies following other companies or establishing formal partnerships.
+## 2. Database Schema
 
-## Key Database Tables
+### 2.1. User Connections
 
-The following tables are central to the networking system. For detailed RLS policies and column definitions, please refer to their respective migration files in `supabase/migrations/` (timestamps starting with `20250520*`).
+#### 2.1.1. `user_connections` Table
+*   **Core Fields:**
+    *   `id` UUID (PK)
+    *   `user_id` UUID (FK to `public.profiles`)
+    *   `connected_user_id` UUID (FK to `public.profiles`)
+    *   `status` connection_status_enum
+    *   `created_at` TIMESTAMPTZ
+    *   `updated_at` TIMESTAMPTZ
 
-*   **`public.user_connections`**: Manages direct connections between individual users. It tracks the `requester_id`, `addressee_id`, and the `status` of the connection (e.g., 'PENDING', 'ACCEPTED', 'DECLINED', 'BLOCKED').
-    *   _Migration File:_ `20250520000004_create_user_connections_table.sql`
+#### 2.1.2. `user_company_follows` Table
+*   **Core Fields:**
+    *   `id` UUID (PK)
+    *   `user_id` UUID (FK to `public.profiles`)
+    *   `company_id` UUID (FK to `public.companies`)
+    *   `created_at` TIMESTAMPTZ
 
-*   **`public.user_company_follows`**: A join table that records which users are following which companies. This is a unilateral action (following).
-    *   _Migration File:_ `20250520000005_create_user_company_follows_table.sql`
+### 2.2. Company Connections
 
-*   **`public.company_to_company_connections`**: Manages connections between two companies. It tracks the `source_company_id`, `target_company_id`, and `connection_type TEXT` (e.g., 'FOLLOWING', 'PARTNERSHIP_REQUESTED'). The `connection_type` itself implies the nature and state of the connection.
-    *   _Migration File:_ `20250520000006_create_company_to_company_connections_table.sql`
+#### 2.2.1. `company_to_company_connections` Table
+*   **Core Fields:**
+    *   `id` UUID (PK)
+    *   `source_company_id` UUID (FK to `public.companies`)
+    *   `target_company_id` UUID (FK to `public.companies`)
+    *   `connection_type` company_connection_type_enum
+    *   `status` connection_status_enum
+    *   `created_at` TIMESTAMPTZ
+    *   `updated_at` TIMESTAMPTZ
 
-## Functionality Highlights
+### 2.3. Enums and Types
 
-*   **User-to-User:** Connection requests, accept/decline workflows, ability to remove/block connections.
-*   **User-to-Company:** Simple follow/unfollow mechanism.
-*   **Company-to-Company:** Simple follow/unfollow, plus a request/accept/decline workflow for partnerships. RLS policies ensure these actions are performed by authorized company owners.
-*   **Data for Feeds:** These connection and follow relationships will be crucial for populating user feeds with relevant content from their network.
+```sql
+CREATE TYPE connection_status_enum AS ENUM (
+    'PENDING',
+    'ACCEPTED',
+    'REJECTED',
+    'BLOCKED'
+);
 
-## Future Enhancements
+CREATE TYPE company_connection_type_enum AS ENUM (
+    'FOLLOWING',
+    'PARTNERSHIP_REQUESTED',
+    'PARTNERSHIP_ESTABLISHED'
+);
+```
 
-*   RPCs for managing connection requests, follow/unfollow actions, and partnership proposals.
-*   Notifications for new connection requests, accepted connections, new followers, etc.
-*   Frontend UI components for displaying connection lists, follower counts, company profiles with follow/connect buttons, and managing connection requests.
-*   Integration with the Company Directory and Search feature. 
+## 3. RPC Functions
+
+### 3.1. User Connection RPCs
+
+*   **`request_user_connection(p_target_user_id UUID)`**
+    *   Initiates connection request
+    *   Validates user existence and eligibility
+    *   Creates notification for target user
+
+*   **`respond_to_user_connection(p_connection_id UUID, p_accept BOOLEAN)`**
+    *   Accepts/rejects connection request
+    *   Updates connection status
+    *   Creates notification for requestor
+
+### 3.2. Company Connection RPCs
+
+*   **`request_company_partnership(p_target_company_id UUID)`**
+    *   Initiates company partnership request
+    *   Validates company eligibility
+    *   Creates notification for target company owner
+
+*   **`respond_to_company_partnership(p_connection_id UUID, p_accept BOOLEAN)`**
+    *   Accepts/rejects partnership request
+    *   Updates connection status
+    *   Creates notification for requestor
+
+## 4. Frontend Implementation
+
+### 4.1. User Profile Components
+
+*   **Connection Button:**
+    *   Displays appropriate action based on connection status
+    *   Handles connection requests and responses
+    *   Shows loading and error states
+
+*   **Connection List:**
+    *   Displays user's connections
+    *   Supports filtering and search
+    *   Pagination implementation
+
+### 4.2. Company Profile Components
+
+*   **Follow Button:**
+    *   Toggles company following status
+    *   Updates follower count
+    *   Optimistic UI updates
+
+*   **Partnership Section:**
+    *   Displays partnership status and options
+    *   Handles partnership requests
+    *   Shows existing partnerships
+
+### 4.3. Hooks and Utilities
+
+*   **`useUserConnections` Hook:**
+    ```typescript
+    interface UseUserConnectionsReturn {
+      connections: UserConnection[];
+      isLoading: boolean;
+      error: Error | null;
+      requestConnection: (userId: string) => Promise<void>;
+      acceptConnection: (connectionId: string) => Promise<void>;
+      rejectConnection: (connectionId: string) => Promise<void>;
+    }
+    ```
+
+*   **`useCompanyConnections` Hook:**
+    ```typescript
+    interface UseCompanyConnectionsReturn {
+      partnerships: CompanyConnection[];
+      followers: CompanyFollower[];
+      isLoading: boolean;
+      error: Error | null;
+      requestPartnership: (companyId: string) => Promise<void>;
+      followCompany: (companyId: string) => Promise<void>;
+      unfollowCompany: (companyId: string) => Promise<void>;
+    }
+    ```
+
+## 5. Security
+
+### 5.1. RLS Policies
+
+*   **User Connections:**
+    *   Users can only view their own connections
+    *   Connection requests require both parties' consent
+    *   Blocked connections prevent further interactions
+
+*   **Company Connections:**
+    *   Company owners can manage partnerships
+    *   Public read access for following relationships
+    *   Protected write access for partnerships
+
+### 5.2. Validation Rules
+
+*   Prevent self-connections
+*   Enforce connection limits
+*   Validate user/company status
+*   Check verification requirements
+
+## 6. Notifications
+
+### 6.1. User Notifications
+
+*   New connection requests
+*   Request responses
+*   Connection updates
+*   Profile changes
+
+### 6.2. Company Notifications
+
+*   New followers
+*   Partnership requests
+*   Partnership status changes
+*   Company updates
+
+## 7. Performance Considerations
+
+### 7.1. Optimization
+
+*   Connection count caching
+*   Follower count caching
+*   Selective real-time updates
+*   Pagination implementation
+
+### 7.2. Indexing
+
+*   Compound indexes for efficient queries
+*   Status-based indexes
+*   Timestamp-based sorting
+
+## 8. Future Enhancements
+
+*   Enhanced connection recommendations
+*   Connection strength metrics
+*   Advanced partnership features
+*   Network visualization
+*   Integration with external platforms
+*   Analytics and insights 

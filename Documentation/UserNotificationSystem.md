@@ -5,79 +5,182 @@
 
 ## 1. Overview
 
-The User Notification System is designed to inform users about important events, actions, and updates within the platform. This includes system messages, content moderation actions, and potentially other relevant activities in the future. The goal is to provide timely and relevant information to enhance user engagement and awareness.
+The User Notification System provides real-time notifications for important events and actions within the platform. It integrates with the header navigation to show unread notifications and allows users to view and manage their notifications through a dropdown interface.
 
-## 2. Key Components
+## 2. Database Schema
 
-### 2.1. Database Schema
+### 2.1. Tables and Types
 
-#### 2.1.1. `user_notifications` Table
-This table stores individual notifications for each user.
-*   **Key Columns:**
-    *   `id` (UUID, PK): Unique identifier for the notification.
-    *   `user_id` (UUID, FK to `public.profiles`): The recipient of the notification.
-    *   `notification_type` (`public.notification_type_enum`): Category of the notification.
-    *   `title` (TEXT): A short title for the notification.
-    *   `message` (TEXT): The main content of the notification.
-    *   `link_to` (TEXT, nullable): A URL path for a call to action (e.g., view a post, go to settings).
-    *   `is_read` (BOOLEAN, default `false`): Status indicating if the user has seen the notification.
-    *   `created_at` (TIMESTAMPTZ): When the notification was generated.
-    *   `updated_at` (TIMESTAMPTZ): When the notification was last updated (e.g., marked as read).
-*   **RLS Policies:** Users can only access and update the `is_read` status of their own notifications. Inserts are handled by system processes or specific RPCs.
-*   For detailed schema, refer to `DatabaseMigrations.md` (migration `20250526000003_create_user_notifications_table.sql`).
+#### 2.1.1. `notification_type_enum`
+```sql
+CREATE TYPE public.notification_type_enum AS ENUM (
+    'system_alert',
+    'content_moderation',
+    'new_message_summary',
+    'connection_request',
+    'rfq_update',
+    'default'
+);
+```
 
-#### 2.1.2. `notification_type_enum`
-This ENUM categorizes notifications.
-*   **Current Values:**
-    *   `system_alert`: General system announcements or alerts.
-    *   `content_moderation`: Notifications related to content moderation actions (e.g., warnings, content removals).
-    *   `new_message_summary`: (Future Use) For summarizing new direct messages.
-    *   `connection_request`: (Future Use) For new connection requests.
-    *   `rfq_update`: (Future Use) For updates related to RFQs.
-    *   `default`: A generic default type.
+#### 2.1.2. `user_notifications` Table
+*   **Core Fields:**
+    *   `id` UUID (PK)
+    *   `user_id` UUID (FK to `public.profiles`)
+    *   `notification_type` (`notification_type_enum`)
+    *   `title` TEXT
+    *   `message` TEXT
+    *   `link_to` TEXT (nullable)
+    *   `is_read` BOOLEAN
+    *   `created_at` TIMESTAMPTZ
+    *   `updated_at` TIMESTAMPTZ
 
 ### 2.2. RPC Functions
 
-The following PostgreSQL functions are used to manage notifications:
+*   **`get_user_notifications(p_limit INT, p_page_number INT)`**
+    *   Returns paginated notifications with unread count
+    *   SECURITY INVOKER for RLS compliance
 
-*   `public.get_user_notifications(p_limit INT, p_page_number INT)`: Retrieves a paginated list of notifications for the calling user, including a total unread count.
-*   `public.mark_notification_as_read(p_notification_id UUID)`: Marks a specific notification as read for the calling user. Returns the updated notification.
-*   `public.mark_all_notifications_as_read()`: Marks all unread notifications as read for the calling user. Returns `true` if any notifications were updated.
+*   **`mark_notification_as_read(p_notification_id UUID)`**
+    *   Marks single notification as read
+    *   Returns updated notification
 
-These are detailed in `DatabaseMigrations.md` (migration `20250526000004_create_notification_rpcs.sql`).
+*   **`mark_all_notifications_as_read()`**
+    *   Marks all user's unread notifications as read
+    *   Returns success boolean
 
-### 2.3. Realtime Functionality
+## 3. Frontend Implementation
 
-The system leverages Supabase Realtime. The `user_notifications` table is configured for Realtime, enabling client-side components like `NotificationBell.tsx` to receive live updates when new notifications are created or existing ones are marked as read. This allows the unread count and notification list to update dynamically.
+### 3.1. Components
 
-## 3. Frontend Integration
+#### 3.1.1. `NotificationDropdown.tsx`
+*   **Location:** `src/components/notifications/NotificationDropdown.tsx`
+*   **Features:**
+    *   Notification list with infinite scroll
+    *   Real-time updates via Supabase subscriptions
+    *   Mark as read functionality
+    *   Click-through to related content
+    *   Notification grouping by type
+*   **Props:**
+    ```typescript
+    interface NotificationDropdownProps {
+      isOpen: boolean;
+      onClose: () => void;
+    }
+    ```
+*   **State Management:**
+    *   Local state for pagination
+    *   Subscription management
+    *   Read status tracking
 
-*   **`NotificationBell.tsx`**: A component in the site header that displays a bell icon and a badge with the count of unread notifications. It fetches the initial count and listens for Realtime updates. Clicking the bell toggles the `NotificationDropdown.tsx`.
-*   **`NotificationDropdown.tsx`**: A dropdown panel listing recent notifications. It allows users to:
-    *   View notification details (title, message, timestamp, type).
-    *   Navigate to related content via `link_to` if provided.
-    *   Mark individual notifications as read (optimistically updates UI and calls RPC).
-    *   Mark all notifications as read.
-    *   Expand notifications to read longer messages.
+### 3.2. Hooks and Utilities
 
-## 4. How Notifications are Generated
+#### 3.2.1. `useNotifications` Hook
+*   **Location:** `src/lib/hooks/useNotifications.ts`
+*   **Features:**
+    *   Notification fetching and pagination
+    *   Real-time subscription management
+    *   Read status updates
+    *   Unread count tracking
+*   **API:**
+    ```typescript
+    interface UseNotificationsReturn {
+      notifications: Notification[];
+      unreadCount: number;
+      isLoading: boolean;
+      loadMore: () => Promise<void>;
+      markAsRead: (id: string) => Promise<void>;
+      markAllAsRead: () => Promise<void>;
+    }
+    ```
 
-Currently, notifications are generated by:
+### 3.3. Integration Points
 
-*   **Admin Moderation Actions (via RPCs):**
-    *   `public.admin_remove_post`: When an admin removes a user's post, a `content_moderation` notification is sent to the post author.
-    *   `public.admin_warn_user`: When an admin warns a user, a `content_moderation` notification is sent to the warned user.
-    *   These RPCs insert records directly into the `user_notifications` table.
+#### 3.3.1. Header Integration
+*   Notification bell icon with unread count
+*   Dropdown trigger
+*   Real-time count updates
 
-*   **Future Enhancements (Examples based on `notification_type_enum`):**
-    *   `system_alert`: For platform-wide announcements.
-    *   `new_message_summary`: Summaries of unread direct messages.
-    *   `connection_request`: Alerts for new connection/friend requests.
-    *   `rfq_update`: Notifications about relevant RFQ activity.
-    *   Social interactions like new followers, likes on posts, comments on user's content.
+#### 3.3.2. Navigation
+*   Click-through handling
+*   Deep linking to related content
+*   Back navigation handling
 
-## 5. Security Considerations
+## 4. Notification Generation
 
-*   RLS policies on `user_notifications` ensure users can only access their own data.
-*   RPC functions (`get_user_notifications`, `mark_notification_as_read`, `mark_all_notifications_as_read`) operate under `SECURITY INVOKER` context, ensuring they respect user permissions.
-*   Notification-creating RPCs (like `admin_remove_post`) operate as `SECURITY DEFINER` to perform privileged insertions into `user_notifications` on behalf of the system or an admin. 
+### 4.1. System-Generated Notifications
+
+*   **Content Moderation:**
+    *   Post removal notifications
+    *   Comment removal notifications
+    *   User warnings
+    *   Account status changes
+
+*   **Company Verification:**
+    *   Status change notifications
+    *   Document review notifications
+    *   Verification completion
+
+*   **RFQ Updates:**
+    *   New RFQ matches
+    *   Quote responses
+    *   Deadline reminders
+
+### 4.2. User Interaction Notifications
+
+*   **Social Features:**
+    *   New followers/connections
+    *   Post interactions
+    *   Comment replies
+    *   Company mentions
+
+*   **Messaging:**
+    *   New message summaries
+    *   Group chat updates
+    *   Message read receipts
+
+## 5. Real-time Implementation
+
+### 5.1. Supabase Configuration
+*   Table configured for Realtime
+*   Selective subscription setup
+*   Proper RLS policies
+
+### 5.2. Frontend Subscriptions
+*   Subscription management in `useNotifications`
+*   Efficient update batching
+*   Error handling and reconnection
+
+## 6. Performance Considerations
+
+### 6.1. Optimization Techniques
+*   Pagination with infinite scroll
+*   Debounced real-time updates
+*   Notification grouping
+*   Read status batching
+
+### 6.2. Caching Strategy
+*   Local notification cache
+*   Unread count caching
+*   Optimistic updates
+
+## 7. Security
+
+### 7.1. Access Control
+*   RLS policies for notification access
+*   User-specific data isolation
+*   Secure link generation
+
+### 7.2. Data Protection
+*   Sensitive data handling
+*   Notification cleanup policies
+*   Rate limiting
+
+## 8. Future Enhancements
+
+*   Push notification support
+*   Enhanced notification grouping
+*   Custom notification preferences
+*   Advanced filtering options
+*   Notification analytics
+*   Mobile app integration 

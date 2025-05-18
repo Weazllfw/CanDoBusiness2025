@@ -1,72 +1,185 @@
-# Top Bar Navigation (Header)
+# Top Bar Navigation System
 
 ## 1. Overview
 
-The top bar navigation, implemented in `Header.tsx`, serves as the primary means of site-wide navigation and provides access to core user functionalities like messaging, account management, and company selection.
+The top bar navigation system provides the main navigation interface for the application. It consists of a header with various interactive components and a responsive layout system that adapts to different screen sizes.
 
-## 2. Component Location
+## 2. Components
 
--   `cando-frontend/src/components/layout/Header.tsx`
+### 2.1. Header (`Header.tsx`)
+*   **Location:** `src/components/layout/Header.tsx`
+*   **Purpose:** Main navigation container
+*   **Features:**
+    *   Responsive design
+    *   User authentication state
+    *   Navigation links
+    *   Interactive components
+*   **Props:**
+    ```typescript
+    interface HeaderProps {
+      user?: User;
+      onSignOut?: () => void;
+    }
+    ```
 
-## 3. Key Features and Structure
+### 2.2. Main Navigation (`MainNav.tsx`)
+*   **Location:** `src/components/layout/MainNav.tsx`
+*   **Purpose:** Primary navigation links
+*   **Features:**
+    *   Dynamic route highlighting
+    *   Permission-based visibility
+    *   Responsive dropdown
+    *   Icon integration
+*   **Navigation Items:**
+    ```typescript
+    interface NavItem {
+      label: string;
+      href: string;
+      icon?: IconComponent;
+      requiresAuth?: boolean;
+      children?: NavItem[];
+    }
+    ```
 
-The `Header` is a client component (`'use client'`) and uses Tailwind CSS for styling and Headless UI for interactive elements like dropdowns.
+### 2.3. Notification Bell (`NotificationBell.tsx`)
+*   **Location:** `src/components/layout/NotificationBell.tsx`
+*   **Purpose:** Notification indicator and dropdown
+*   **Features:**
+    *   Unread count badge
+    *   Real-time updates
+    *   Notification preview
+    *   Mark as read functionality
 
-### 3.1. Logo and Branding
+### 2.4. Layout Wrapper (`LayoutWrapper.tsx`)
+*   **Location:** `src/components/layout/LayoutWrapper.tsx`
+*   **Purpose:** Page layout container
+*   **Features:**
+    *   Consistent spacing
+    *   Responsive padding
+    *   Content width control
+    *   Layout structure
 
--   Displays the site logo ("CanDo") on the left, linking to the homepage (`/`).
+### 2.5. Sidebar (`Sidebar.tsx`)
+*   **Location:** `src/components/layout/Sidebar.tsx`
+*   **Purpose:** Secondary navigation
+*   **Features:**
+    *   Context-specific links
+    *   Collapsible sections
+    *   Mobile responsiveness
+    *   Dynamic content
 
-### 3.2. Main Navigation Links
+## 3. Navigation Structure
 
--   Centrally aligned links for key sections of the platform:
-    -   **Home:** Links to `/`.
-    -   **Network:** Links to `/network`.
-    -   **Messages Icon (`EnvelopeIcon`):**
-        -   Opens the `MessagesModal` component when clicked.
-        -   Includes a visual indicator (green dot) for new messages (logic for this indicator might be abstract or to be implemented).
-        -   The `MessagesModal` is also rendered within `Header.tsx` and its visibility is controlled by the `isMessagesOpen` state.
+### 3.1. Main Routes
+*   Home (`/`)
+*   Feed (`/feed`)
+*   Companies (`/companies`)
+*   RFQs (`/rfqs`)
+*   Messages (`/messages`)
+*   Profile (`/profile`)
+*   Admin (`/admin`) - Conditional
 
-### 3.3. Right-Aligned User Controls
+### 3.2. Secondary Routes
+*   Company Management (`/company/*`)
+*   Settings (`/settings/*`)
+*   Notifications (`/notifications`)
+*   Help & Support (`/help`)
 
-This section is a flex container aligning items to the right of the header.
+## 4. Interactive Features
 
-#### 3.3.1. Company Selector (`CompanySelector.tsx`)
+### 4.1. User Menu
+*   Profile link
+*   Company selector
+*   Settings access
+*   Sign out option
 
--   **Integration:** The `CompanySelector` component is rendered directly on the top bar, to the left of the user profile dropdown.
--   **Purpose:** Allows authenticated users to:
-    -   See their currently selected company (if any) and its verification status.
-    -   Open a dropdown to switch between their associated companies.
-    -   Access links to "Create New Company" (`/company/new`) and "Manage Companies" (`/dashboard/companies`).
--   **Conditional Rendering:** Only displayed if `user.id` (from `useAuth()` hook) is available.
--   **Styling Considerations:** The `CompanySelector` has its own button styling (white background by default). When placed on the dark red header, its visual integration might require custom styling to match the header theme if desired. It is currently constrained in width (`w-56`).
--   **Data Fetching:** Calls `get_user_companies` RPC to list companies for the `currentUserId`.
+### 4.2. Notifications
+*   Real-time updates
+*   Unread indicators
+*   Quick actions
+*   Notification center link
 
-#### 3.3.2. User Profile Dropdown (`Menu` from Headless UI)
+### 4.3. Search
+*   Global search
+*   Quick results
+*   Advanced filters
+*   Recent searches
 
--   **Trigger:** Displays the user's avatar (or initial if no avatar) and name. Clicking this area opens the dropdown.
--   **User Information:** Fetches user data (name, avatar URL) using the `useAuth()` hook.
--   **Dropdown Items:**
-    -   **Account Management:** Links to `/account`.
-    -   **Manage Companies:** Links to `/dashboard/companies` (providing direct access to the full company management page, complementing the `CompanySelector`).
-    -   **(Separator)**
-    -   **Sign Out:** Calls the `signOut` function from the `useAuth()` hook.
+## 5. Responsive Design
 
-## 4. State Management
+### 5.1. Desktop Layout
+*   Full navigation bar
+*   Expanded menu items
+*   Hover states
+*   Multi-level dropdowns
 
--   `isMessagesOpen` (boolean): Controls the visibility of the `MessagesModal`.
--   User data (`user`, `signOut`): Managed by the `useAuth()` custom hook.
--   Current pathname (`pathname` from `usePathname()`): Used to highlight active navigation links.
--   The `CompanySelector` manages its own internal state for the list of companies, selected company, and loading/error states.
+### 5.2. Mobile Layout
+*   Hamburger menu
+*   Collapsible navigation
+*   Touch-friendly targets
+*   Simplified dropdowns
 
-## 5. Technical Details
+## 6. State Management
 
--   **Authentication:** Relies on `useAuth()` to get the current user's status and details. This is crucial for displaying user-specific information and controlling access to features like the `CompanySelector` and the user dropdown content.
--   **Client-Side Rendering:** As a client component, it handles user interactions and dynamic content updates directly in the browser.
--   **Modularity:** Integrates other components like `MessagesModal` and `CompanySelector`.
+### 6.1. Authentication State
+*   User session handling
+*   Protected routes
+*   Role-based access
+*   Login/logout flow
 
-## 6. User Experience
+### 6.2. Navigation State
+*   Active route tracking
+*   Breadcrumb generation
+*   History management
+*   Deep linking
 
--   Provides persistent and easy access to main site sections.
--   Consolidates user-specific actions (account, company management, sign out) under a profile dropdown.
--   Offers immediate company switching and creation capabilities via the integrated `CompanySelector`.
--   Visual feedback for active links and new messages enhances usability. 
+## 7. Performance
+
+### 7.1. Optimization
+*   Code splitting
+*   Lazy loading
+*   Route prefetching
+*   Component memoization
+
+### 7.2. Caching
+*   Route caching
+*   Navigation data
+*   User preferences
+*   Search history
+
+## 8. Accessibility
+
+### 8.1. Standards
+*   ARIA labels
+*   Keyboard navigation
+*   Focus management
+*   Screen reader support
+
+### 8.2. User Experience
+*   Clear visual hierarchy
+*   Consistent behavior
+*   Error handling
+*   Loading states
+
+## 9. Security
+
+### 9.1. Route Protection
+*   Authentication checks
+*   Role verification
+*   Permission validation
+*   Secure redirects
+
+### 9.2. Data Safety
+*   XSS prevention
+*   CSRF protection
+*   Input validation
+*   Secure storage
+
+## 10. Future Enhancements
+
+*   Custom navigation themes
+*   Enhanced search integration
+*   Personalized shortcuts
+*   Activity history
+*   Navigation analytics
+*   Mobile app integration 

@@ -1,98 +1,195 @@
-# Company Onboarding & Management (User-Facing)
+# Company Onboarding Process
 
 ## 1. Overview
 
-Company onboarding refers to the process by which users create and set up their company profiles on the platform. Users can own multiple companies and manage their details. The system is designed to be straightforward, guiding users through form-based inputs for company information.
+The company onboarding process guides users through creating and setting up their company profile on the platform. It includes company information collection, verification steps, and initial setup of company features.
 
-## 2. Key User Flows
+## 2. Components
 
-### 2.1. Creating a New Company
+### 2.1. Company Form (`CompanyForm.tsx`)
+*   **Location:** `src/components/company/CompanyForm.tsx`
+*   **Purpose:** Main form for company creation and editing
+*   **Features:**
+    *   Multi-step form process
+    *   Form validation
+    *   File upload handling
+    *   Progress tracking
+*   **Key Sections:**
+    ```typescript
+    interface CompanyFormSections {
+      basicInfo: boolean;
+      contactDetails: boolean;
+      businessDetails: boolean;
+      verification: boolean;
+      documents: boolean;
+      review: boolean;
+    }
+    ```
 
-1.  **Access Point:** Users can typically initiate company creation from:
-    *   The `CompanySelector` component (often in the site header), which has a "Create New Company" link.
-    *   The "Manage Your Companies" page (`/dashboard/companies`), which also has a "Create New Company" button.
-2.  **Navigation:** Users are directed to the `/company/new` page.
-3.  **Form Interaction:** The `CompanyForm.tsx` component is rendered, allowing the user to input details such as:
-    *   Company Name (required)
-    *   Description
-    *   Website
-    *   Industry
-    *   Avatar URL (for company logo)
-    *   Banner URL (optional, for company profile page header)
-    *   Year Founded
-    *   Business Type
-    *   Employee Count range
-    *   Revenue Range
-    *   Street Address
-    *   City
-    *   Province/Territory (`province`, required)
-    *   Major Metropolitan Area (required, conditional based on Province)
-    *   Other (Specify) Metropolitan Area (required if "Other" is selected for Major Metro Area)
-    *   Postal Code
-    *   Country (defaults to 'Canada')
-    *   Contact Person Name (required)
-    *   Contact Person Email
-    *   Contact Person Phone
-    *   Services (`services`, required, allows custom entries)
-    *   Social Media Links (e.g., LinkedIn, Twitter, etc. - repeatable fields)
-    *   Certifications (repeatable fields)
-    *   Tags/Keywords (repeatable fields)
-4.  **Submission:** Upon submission, the form data is used to create a new record in the `public.companies` table.
-    *   The `owner_id` is automatically set to the current authenticated user's ID (`auth.uid()`).
-    *   The `verification_status` defaults to 'unverified'.
-5.  **Outcome:** After successful creation, the user might be redirected to the "Manage Your Companies" page or the newly created company's profile/edit page.
+### 2.2. Company Selector (`CompanySelector.tsx`)
+*   **Location:** `src/components/company/CompanySelector.tsx`
+*   **Purpose:** Component for selecting/switching between companies
+*   **Features:**
+    *   Company list display
+    *   Quick company switching
+    *   Company creation trigger
+    *   Permission checks
 
-### 2.2. Editing an Existing Company
+## 3. Onboarding Flow
 
-1.  **Access Point:** Users can edit companies they own from:
-    *   The "Manage Your Companies" page (`/dashboard/companies`), which lists their companies with an "Edit" link for each.
-    *   The Company Profile page (`/company/[id]`), which will have an "Edit Profile" button for company owners.
-2.  **Navigation:** Users are directed to `/company/[id]/edit`, where `[id]` is the UUID of the company to be edited.
-3.  **Form Interaction:** The `CompanyForm.tsx` component is rendered, pre-filled with the existing details of the selected company, allowing modification of all fields listed in section 2.1.3.
-4.  **Submission:** Upon submission, the updated data modifies the corresponding record in the `public.companies` table.
-    *   RLS policies ensure only the `owner_id` can update their company.
-    *   The `internal.prevent_owner_update_restricted_company_fields` trigger prevents owners from changing `verification_status` or `admin_notes`.
-5.  **Outcome:** User is typically returned to the "Manage Your Companies" page or sees a success confirmation.
+### 3.1. Basic Information
+*   Company name
+*   Business description
+*   Industry selection
+*   Website URL
+*   Company size
+*   Year founded
 
-### 2.3. Managing Multiple Companies
+### 3.2. Contact Details
+*   Primary contact information
+*   Business address
+*   Phone numbers
+*   Email addresses
+*   Social media links
 
-1.  **Viewing Companies:** The `/dashboard/companies` page (`ManageCompaniesPage.tsx`) lists all companies owned by the user, showing their name, avatar, and current `verification_status`.
-2.  **Switching Active Company:** The `CompanySelector.tsx` component (usually in the header) allows users to easily switch their "active" or currently selected company if the application uses such a concept for context (e.g., for posting content, sending messages as a company). The `CompanySelector` itself displays the list of user's companies and their verification statuses.
+### 3.3. Business Details
+*   Business registration number
+*   Tax identification
+*   Operating locations
+*   Business hours
+*   Service areas
 
-## 3. Frontend Components
+### 3.4. Verification Process
+*   Document upload interface
+*   Verification tier selection
+*   Status tracking
+*   Compliance checks
 
--   **`cando-frontend/src/app/company/new/page.tsx`:**
-    -   Page wrapper for creating a new company.
-    -   Renders `CompanyForm.tsx`.
--   **`cando-frontend/src/app/company/[id]/page.tsx` (`CompanyProfilePage`):**
-    -   Displays the detailed public profile of a specific company.
-    -   Fetches company data (from `companies_view`) based on the ID in the URL.
-    -   For company owners, it provides a link/button to the edit page (`/company/[id]/edit`).
--   **`cando-frontend/src/app/company/[id]/edit/page.tsx` (`EditCompanyPage`):**
-    -   Page wrapper for editing an existing company.
-    -   Fetches company data based on the ID in the URL to pre-fill the form.
-    -   Renders `CompanyForm.tsx` pre-filled with data.
--   **`cando-frontend/src/components/company/CompanyForm.tsx`:**
-    -   A reusable React component providing the form fields for company details (including new address fields, `major_metropolitan_area`, `other_metropolitan_area_specify`, contact details, services, and removing the old `location` field).
-    -   Handles form state, validation (Zod schema), and submission logic (calling Supabase client to insert/update).
--   **`cando-frontend/src/app/dashboard/companies/page.tsx` (`ManageCompaniesPage`):**
-    -   Displays a list of companies owned by the current user.
-    -   Fetches data using the `get_user_companies` RPC (which returns `companies_view` data).
-    -   Provides links to create new companies and edit existing ones.
--   **`cando-frontend/src/components/company/CompanySelector.tsx`:**
-    -   Dropdown component allowing users to see their companies and their verification status.
-    -   Used for quick selection/switching of the active company context.
-    -   Links to `/company/new` and `/dashboard/companies`.
-    -   Fetches data using `get_user_companies` RPC.
+### 3.5. Document Management
+*   Business registration
+*   Tax documents
+*   Licenses/permits
+*   Insurance certificates
+*   Additional documentation
 
-## 4. Backend Considerations
+### 3.6. Review & Submit
+*   Information review
+*   Terms acceptance
+*   Submission confirmation
+*   Next steps guidance
 
--   **RLS Policies:** Ensure that users can only create companies with themselves as `owner_id`, and can only update/delete companies they own. (Refer to `Documentation/Companies.md` for detailed RLS).
--   **Default Values:** `verification_status` defaults to 'unverified' when a new company is created.
--   **Data Integrity:** The `owner_id` foreign key constraint ensures company ownership is tied to a valid user in `auth.users`.
+## 4. Database Integration
 
-## 5. User Experience Notes
+### 4.1. Core Tables
 
--   The onboarding process is form-driven and should be intuitive.
--   Displaying the `verification_status` in the `CompanySelector` and on the `ManageCompaniesPage` provides users with immediate feedback on the status of their company profiles.
--   Clear access points to create, view, and edit companies are crucial for a good user experience. 
+#### 4.1.1. `companies` Table
+*   **Core Fields:**
+    *   `id` UUID (PK)
+    *   `owner_id` UUID (FK to `public.profiles`)
+    *   `name` TEXT
+    *   `description` TEXT
+    *   `website` TEXT
+    *   `industry` TEXT
+    *   `location` TEXT
+    *   `created_at` TIMESTAMPTZ
+    *   `updated_at` TIMESTAMPTZ
+
+#### 4.1.2. `company_verification` Table
+*   **Core Fields:**
+    *   `company_id` UUID (PK, FK to `companies`)
+    *   `verification_tier` verification_tier_enum
+    *   `status` verification_status_enum
+    *   `submitted_at` TIMESTAMPTZ
+    *   `verified_at` TIMESTAMPTZ
+    *   `verified_by` UUID
+
+## 5. Storage Integration
+
+### 5.1. Document Storage
+*   **Bucket:** 'company-documents'
+*   **Structure:**
+    ```
+    company-documents/
+    ├── {company_id}/
+    │   ├── verification/
+    │   │   ├── business_registration.pdf
+    │   │   ├── tax_documents.pdf
+    │   │   └── ...
+    │   ├── logo/
+    │   │   └── company_logo.png
+    │   └── additional/
+    │       └── ...
+    ```
+
+### 5.2. Access Control
+*   RLS policies for document access
+*   Owner-only write permissions
+*   Admin review capabilities
+*   Temporary URL generation
+
+## 6. Validation & Security
+
+### 6.1. Form Validation
+*   Required field checks
+*   Format validation
+*   Duplicate detection
+*   File type verification
+*   Size limit enforcement
+
+### 6.2. Security Measures
+*   Data sanitization
+*   CSRF protection
+*   Rate limiting
+*   Permission checks
+*   Audit logging
+
+## 7. Error Handling
+
+### 7.1. User Feedback
+*   Validation errors
+*   Submission failures
+*   Progress saving
+*   Recovery options
+
+### 7.2. System Errors
+*   Database errors
+*   Storage failures
+*   Network issues
+*   Timeout handling
+
+## 8. Performance
+
+### 8.1. Form Performance
+*   Progressive loading
+*   Debounced validation
+*   Optimistic updates
+*   State management
+
+### 8.2. File Handling
+*   Chunked uploads
+*   Compression
+*   Format conversion
+*   Progress tracking
+
+## 9. Notifications
+
+### 9.1. User Notifications
+*   Submission confirmation
+*   Verification updates
+*   Document requests
+*   Approval notices
+
+### 9.2. Admin Notifications
+*   New company alerts
+*   Verification requests
+*   Document updates
+*   Action items
+
+## 10. Future Enhancements
+
+*   Enhanced document verification
+*   AI-powered validation
+*   Integration with external verification services
+*   Bulk company import
+*   Advanced company settings
+*   Custom field support 

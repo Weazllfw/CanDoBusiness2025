@@ -2,55 +2,151 @@
 
 This document provides a high-level overview of the frontend code structure located in `cando-frontend/src/`.
 
-## Key Directories
+## 1. Key Directories
 
-*   **`src/app/`**:
-    *   **Purpose**: Contains the main pages, layouts, and routing logic for the Next.js application. Each subdirectory typically corresponds to a major section or feature of the site.
-    *   **Subdirectories of Note**:
-        *   `admin/`: Pages related to administrative functionalities (e.g., company verification).
-        *   `auth/`: Pages for authentication flows (login, signup, password reset, etc.).
-        *   `company/`: Handles company-related functionalities. This includes:
-            *   `new/page.tsx`: Page for creating a new company profile.
-            *   `[id]/page.tsx`: Page for viewing a specific company's public profile.
-            *   `[id]/edit/page.tsx`: Page for editing an existing company's profile.
-            *   `[id]/apply-for-verification/page.tsx`: Page for a company to apply for basic verification.
-            *   `[id]/apply-for-tier2-verification/page.tsx`: Page for a company to apply for Tier 2 verification.
-        *   `dashboard/`: User dashboard pages, potentially including company management overviews (`dashboard/companies/page.tsx`).
-        *   `feed/`: Pages related to the main content feed.
-        *   `messages/`: UI for the user-to-user messaging system.
-        *   `rfq/`: Pages for Request for Quote functionalities.
-    *   **Root Files**:
-        *   `layout.tsx`: The main root layout for the application.
-        *   `page.tsx`: The main entry page for the application (often the homepage).
-        *   `globals.css`: Global CSS styles.
+### 1.1. `src/app/` (Next.js App Router)
 
-*   **`src/components/`**:
-    *   **Purpose**: Houses reusable UI components that are used across different pages and features.
-    *   **Subdirectories of Note**:
-        *   `admin/`: Components specific to the admin interface (e.g., `CompanyVerificationTable.tsx`).
-        *   `auth/`: Components used in authentication forms and flows.
-        *   `company/`: Components related to company profiles, forms (e.g., `CompanyForm.tsx`), and selection (e.g., `CompanySelector.tsx`). This would also be where components for the verification application process are located.
-        *   `feed/`: Components used in the content feed.
-        *   `layout/`: Components related to the overall site layout (e.g., header, footer, navigation).
-        *   `messages/`: Components for the messaging interface (e.g., message lists, input fields).
+*   **Purpose**: Contains the main pages, layouts, and routing logic using Next.js App Router architecture.
+*   **Key Files**:
+    *   `layout.tsx`: Root layout with common elements (header, footer).
+    *   `page.tsx`: Homepage/landing page.
+    *   `globals.css`: Global styles using Tailwind CSS.
+    *   `metadata.ts`: Next.js metadata configuration.
+*   **Key Subdirectories**:
+    *   `admin/`: Administrative interfaces
+        *   `page.tsx`: Main admin dashboard
+        *   `flags/`: Content moderation interface
+        *   `verifications/`: Company verification management
+    *   `auth/`: Authentication flows
+        *   `login/`: Login page
+        *   `signup/`: Registration page
+        *   `reset-password/`: Password reset flow
+    *   `company/`: Company-related pages
+        *   `new/`: Company creation
+        *   `[id]/`: Company profile and management
+        *   `[id]/edit/`: Company editing
+        *   `[id]/apply-for-verification/`: Verification application
+        *   `[id]/apply-for-tier2-verification/`: Tier 2 verification
+    *   `dashboard/`: User dashboard pages
+        *   `companies/`: Company management overview
+    *   `feed/`: Social feed pages
+    *   `messages/`: Messaging interface
+    *   `rfq/`: Request for Quote functionality
 
-*   **`src/lib/`**:
-    *   **Purpose**: Contains libraries, helper functions, custom hooks, and Supabase client configurations.
-    *   **Subdirectories/Files of Note**:
-        *   `hooks/`: Custom React hooks for managing state and side effects (e.g., `useMessages.ts`).
-        *   `utils/`: General utility functions.
-        *   `supabase.ts`: Configuration and helper functions for interacting with the Supabase backend.
-        *   `auth.ts`: Authentication-related helper functions.
-        *   `messages.ts`: Logic related to fetching and sending messages.
+### 1.2. `src/components/`
 
-*   **`src/types/`**:
-    *   **Purpose**: Stores TypeScript type definitions and interfaces.
-    *   **Files of Note**:
-        *   `supabase.ts`: Often contains types automatically generated from the Supabase database schema, providing type safety for database interactions.
-        *   `admin.ts`, `feed.ts`: Custom types specific to those domains.
+*   **Purpose**: Reusable UI components organized by feature domain.
+*   **Key Subdirectories**:
+    *   `admin/`: Admin interface components
+        *   `CompanyVerificationTable.tsx`
+        *   `FlaggedContentTable.tsx`
+    *   `auth/`: Authentication components
+        *   `LoginForm.tsx`
+        *   `SignupForm.tsx`
+    *   `company/`: Company-related components
+        *   `CompanyForm.tsx`
+        *   `CompanySelector.tsx`
+        *   `CompanyCard.tsx`
+    *   `feed/`: Social feed components
+        *   `FeedList.tsx`
+        *   `PostItem.tsx`
+        *   `CreatePostForm.tsx`
+    *   `layout/`: Layout components
+        *   `Header.tsx`
+        *   `Footer.tsx`
+        *   `Sidebar.tsx`
+    *   `messages/`: Messaging components
+        *   `MessagesModal.tsx`
+        *   `ThreadList.tsx`
+        *   `MessageInput.tsx`
+    *   `notifications/`: Notification components
+        *   `NotificationBell.tsx`
+        *   `NotificationDropdown.tsx`
 
-*   **`src/middleware.ts`**:
-    *   **Purpose**: Next.js middleware for executing code on requests before they are processed by a page. Often used for authentication checks, redirects, or modifying request/response headers.
+### 1.3. `src/lib/`
+
+*   **Purpose**: Utility functions, hooks, and service integrations.
+*   **Key Files/Modules**:
+    *   `supabase.ts`: Supabase client configuration
+    *   `hooks/`: Custom React hooks
+        *   `useAuth.ts`: Authentication state management
+        *   `useMessages.ts`: Messaging functionality
+        *   `useNotifications.ts`: Notification management
+    *   `utils/`: Helper functions
+        *   `validation.ts`: Form validation utilities
+        *   `formatting.ts`: Data formatting utilities
+    *   `api/`: API integration functions
+        *   `companies.ts`: Company-related API calls
+        *   `messages.ts`: Messaging API calls
+        *   `posts.ts`: Social feed API calls
+
+### 1.4. `src/types/`
+
+*   **Purpose**: TypeScript type definitions.
+*   **Key Files**:
+    *   `supabase.ts`: Generated Supabase database types
+    *   `admin.ts`: Admin interface types
+    *   `company.ts`: Company-related types
+    *   `feed.ts`: Social feed types
+    *   `messages.ts`: Messaging system types
+
+## 2. Key Features Implementation
+
+### 2.1. Authentication Flow
+*   Implemented in `src/app/auth/` pages
+*   Uses Supabase Auth
+*   Protected routes via middleware
+*   User state management with `useAuth` hook
+
+### 2.2. Company Management
+*   Company creation/editing forms in `src/components/company/`
+*   Verification flow in dedicated pages
+*   Company selector in header for context switching
+
+### 2.3. Social Feed
+*   Main feed implementation in `src/app/feed/`
+*   Post creation and interaction components
+*   Real-time updates using Supabase subscriptions
+
+### 2.4. Messaging System
+*   Modal-based interface via `MessagesModal`
+*   Real-time message delivery
+*   Conversation management
+*   Welcome message automation
+
+### 2.5. Admin Interface
+*   Dashboard with statistics
+*   Company verification management
+*   Content moderation tools
+*   Admin-only routes protection
+
+## 3. State Management
+
+*   **Authentication**: Managed via `useAuth` custom hook
+*   **Real-time Data**: Supabase subscriptions for messages, notifications
+*   **Forms**: React Hook Form with Zod validation
+*   **UI State**: React useState/useReducer for component state
+
+## 4. Styling
+
+*   **Framework**: Tailwind CSS
+*   **Components**: Mix of custom components and Headless UI
+*   **Responsive Design**: Mobile-first approach
+*   **Theme**: Consistent color scheme and spacing
+
+## 5. Performance Considerations
+
+*   **Code Splitting**: Automatic through Next.js
+*   **Image Optimization**: Next.js Image component
+*   **Caching**: Supabase query caching
+*   **Real-time**: Selective subscriptions
+
+## 6. Security
+
+*   **Authentication**: Supabase Auth integration
+*   **Route Protection**: Middleware checks
+*   **Admin Routes**: Double verification (frontend + backend)
+*   **API Access**: Supabase RLS policies
 
 ## Company Verification Flow Frontend Touchpoints ( अनुमानित)
 

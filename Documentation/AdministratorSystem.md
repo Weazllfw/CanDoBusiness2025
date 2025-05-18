@@ -2,52 +2,180 @@
 
 ## 1. Purpose
 
-Administrators (Admins) in the CanDo Business Network platform are privileged users responsible for system oversight, content moderation (including reviewing flagged posts and comments), managing company verifications, and potentially other sensitive operations. Their role is crucial for maintaining the platform's integrity, safety, and adherence to policies.
+Administrators (Admins) in the CanDo Business Network platform are privileged users responsible for:
+- System oversight
+- Content moderation (reviewing flagged posts and comments)
+- Company verification management (Tier 1 and Tier 2)
+- Platform integrity maintenance
+- Policy enforcement
 
 ## 2. Admin Identification
 
-Admin identification is handled differently at the backend (for database RLS and secure functions) and frontend (for UI access).
+### 2.1. Frontend Admin Identification
 
-### 2.1. Backend Admin Identification: `internal.is_admin(user_id)`
+-   **Location**: `cando-frontend/src/app/admin/page.tsx`
+-   **Mechanism**: Checks if the logged-in user's email is in `ADMIN_EMAILS` array
+-   **Implementation**:
+    ```typescript
+    const ADMIN_EMAILS = ['rmarshall@itmarshall.net', 'anotheradmin@example.com'];
+    // Used in useEffect to control UI access
+    if (session.user?.email && ADMIN_EMAILS.includes(session.user.email)) {
+      setIsAdmin(true);
+      // Fetch admin data...
+    }
+    ```
+-   **Purpose**: Controls UI visibility and navigation access
+-   **Security Note**: This is a client-side check and must be backed by server-side validation
 
--   **Core Mechanism**: The primary way the system identifies an administrator at the database level is through the SQL function `internal.is_admin(p_user_id uuid)`.
--   **Current Logic**: This function (defined in `supabase/migrations/20240510000002_secure_companies_access.sql`) currently checks if the `email` associated with the provided `p_user_id` in the `public.profiles` table matches a specific, predefined administrator email address (e.g., 'rmarshall@itmarshall.net').
+### 2.2. Backend Admin Identification
+
+-   **Core Function**: `internal.is_admin(p_user_id uuid)`
+-   **Location**: `supabase/migrations/20240510000002_secure_companies_access.sql`
+-   **Implementation**: 
+    - Checks if user's email matches predefined admin email(s)
+    - Returns boolean indicating admin status
 -   **Usage**:
-    -   It is used in Row Level Security (RLS) policies to grant admins broader access to tables (e.g., `public.companies`, `public.post_flags`, `public.comment_flags`).
-    -   It is called by the `internal.ensure_admin()` helper function (defined in `supabase/migrations/20250515500000_create_ensure_admin_function.sql`), which is used at the beginning of `SECURITY DEFINER` RPCs to restrict execution to administrators only.
+    - Row Level Security (RLS) policies
+    - Admin-only RPC functions
+    - Secure data access control
 
-### 2.2. Frontend Admin Dashboard Access
+### 2.3. Admin Authorization Helper
 
--   **Mechanism**: Access to the Admin Dashboard UI (typically `/admin`) is controlled by a client-side check within the frontend application.
--   **Implementation**: As seen in `cando-frontend/src/app/admin/page.tsx`, this often involves checking if the currently logged-in user's email is present in a predefined list of `ADMIN_EMAILS`.
--   **Distinction**: This frontend check is for UI visibility and navigation control. It does not grant database-level privileges; those are solely determined by the backend `internal.is_admin()` function and associated RLS policies.
+-   **Function**: `internal.ensure_admin()`
+-   **Location**: `supabase/migrations/20250515500000_create_ensure_admin_function.sql`
+-   **Purpose**: Standardized admin check for secure functions
+-   **Usage**: Called at the start of SECURITY DEFINER functions
+-   **Behavior**: Raises exception if user is not admin
 
-## 3. Initial Administrator Setup
+## 3. Admin Privileges
 
--   **Script**: The first administrator account (e.g., 'rmarshall@itmarshall.net') is intended to be set up using the `scripts/setup-admin.js` script.
--   **Process**: This script:
-    1.  Attempts to sign in the predefined admin user. If the user doesn't exist or credentials fail, it attempts to sign them up.
-    2.  Calls the `internal_upsert_profile_for_user` RPC to ensure a profile exists for this admin user.
--   **Outcome**: This creates a standard user in `auth.users` and a corresponding entry in `public.profiles`. The `internal.is_admin()` function will then recognize this user as an admin due to their email matching the one hardcoded in the function.
+### 3.1. Company Verification
 
-## 4. Managing Multiple Administrators
+-   **Access**: Full access to company verification system
+-   **Capabilities**:
+    - View all company details
+    - Update verification status
+    - Add admin notes
+    - Access verification documents
+    - Manage Tier 1 and Tier 2 verifications
 
--   **Current Limitation**: The system, particularly the `internal.is_admin()` SQL function, is currently set up to recognize only the initially configured admin(s) (e.g., based on a specific email).
--   **Future Enhancements (Required for Scalability)**: To allow the initial admin to designate other users as administrators, or for a more flexible admin management system, the `internal.is_admin()` function's logic will need to be updated. Potential approaches include:
-    1.  **Modifying `internal.is_admin()`**:
-        -   Hardcoding a list of admin emails (less flexible).
-        -   Changing it to query a dedicated `public.admin_users` table (e.g., `admin_users (user_id UUID PRIMARY KEY REFERENCES auth.users(id))`). The initial admin could then be given rights to add/remove users from this table.
-    2.  **Using JWT Custom Claims**:
-        -   Assign a custom claim (e.g., `app_metadata.role = 'admin'`) to admin users in Supabase Auth.
-        -   Update `internal.is_admin()` to check for this claim: `auth.jwt() ->> 'app_metadata' ->> 'role' = 'admin'`. This is a common and robust approach.
--   **Impact**: Until such an enhancement is implemented, any new users, even if conceptually considered admins by the initial admin, will not be recognized as such by database RLS policies or secure functions that rely on `internal.is_admin()`.
+### 3.2. Content Moderation
 
-## 5. Administrator Privileges (Examples)
+-   **Access**: Complete access to content flagging system
+-   **Capabilities**:
+    - View all flagged content
+    - Update flag status
+    - Remove content
+    - Issue warnings
+    - Ban users
+    - View moderation statistics
 
-Administrators have special privileges across various parts of the platform, including but not limited to:
+### 3.3. Data Access
 
--   **Company Verification**: Approving or rejecting company verification submissions, adding admin notes. (See `Documentation/CompanyVerification.md`).
--   **Content Flagging**: Reviewing flagged posts and comments, updating flag statuses, removing content, and adding admin notes to flags. (See `Documentation/ContentFlaggingSystem.md`).
--   **Access to Admin Dashboard**: Viewing platform statistics and accessing administrative tools. (See `Documentation/AdminDashboard.md`).
+-   **Tables with Admin Access**:
+    - `public.companies` (full access)
+    - `public.post_flags` (full access)
+    - `public.comment_flags` (full access)
+    - `public.admin_actions_log` (write access)
+    - `tier2-verification-documents` storage bucket
+
+### 3.4. Administrative Functions
+
+-   **Company Management**:
+    - `admin_get_all_companies_with_owner_info()`
+    - `admin_update_company_verification()`
+    - `get_company_verification_stats()`
+
+-   **Content Moderation**:
+    - `admin_get_flag_statistics()`
+    - `admin_get_post_flags()`
+    - `admin_update_post_flag_status()`
+    - `admin_get_comment_flags()`
+    - `admin_update_comment_flag_status()`
+    - `admin_remove_post()`
+    - `admin_remove_comment()`
+    - `admin_warn_user()`
+    - `admin_ban_user()`
+
+## 4. Security Implementation
+
+### 4.1. Row Level Security (RLS)
+
+-   **Policy Pattern**:
+    ```sql
+    CREATE POLICY "Admin full access" ON public.table_name
+    FOR ALL USING (
+      internal.is_admin(auth.uid())
+    );
+    ```
+-   **Applied to**: All admin-accessible tables
+-   **Ensures**: Only admins can perform privileged operations
+
+### 4.2. Secure Functions
+
+-   **Pattern**:
+    ```sql
+    CREATE OR REPLACE FUNCTION public.admin_function()
+    RETURNS ... AS $$
+    BEGIN
+      PERFORM internal.ensure_admin();
+      -- Function logic
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+    ```
+-   **Features**:
+    - SECURITY DEFINER execution
+    - Mandatory admin check
+    - Proper error handling
+    - Audit logging
+
+### 4.3. Storage Security
+
+-   **Bucket**: 'tier2-verification-documents'
+-   **RLS Policies**:
+    - Admin-only read access
+    - Company-specific write paths
+    - Automatic cleanup on status changes
+
+## 5. Audit Trail
+
+-   **Table**: `public.admin_actions_log`
+-   **Tracked Information**:
+    - Action type
+    - Target type
+    - Target ID
+    - Admin ID
+    - Timestamp
+    - Action details
+    - Previous state
+-   **Purpose**: Maintain accountability and track changes
+
+## 6. Future Enhancements
+
+### 6.1. Multiple Admin Management
+
+Current system uses hardcoded admin emails. Future improvements should consider:
+
+1. **Admin Management Table**:
+   ```sql
+   CREATE TABLE public.admin_users (
+     user_id UUID PRIMARY KEY REFERENCES auth.users(id),
+     added_by UUID REFERENCES auth.users(id),
+     added_at TIMESTAMPTZ DEFAULT now(),
+     admin_level TEXT
+   );
+   ```
+
+2. **JWT Custom Claims**:
+   - Assign `app_metadata.role = 'admin'`
+   - Update `internal.is_admin()` to check claims
+
+3. **Admin Levels**:
+   - Super Admin
+   - Content Moderator
+   - Company Verifier
+   - Read-only Admin
+
+These enhancements would provide more flexible and scalable admin management.
 
 This document serves as the primary reference for understanding how administrator roles and privileges are defined and managed within the system. 
