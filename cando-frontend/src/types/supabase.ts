@@ -1454,6 +1454,17 @@ export type Database = {
           unread_count: number
         }[]
       }
+      get_cymk_suggestions: {
+        Args: { p_requesting_user_id: string; p_limit?: number }
+        Returns: {
+          suggested_company_id: string
+          company_name: string
+          company_avatar_url: string
+          company_industry: string
+          score: number
+          reason: string
+        }[]
+      }
       get_feed_posts: {
         Args: {
           p_user_id: string
@@ -1496,6 +1507,16 @@ export type Database = {
           user_email: string
           depth: number
           sort_path: string[]
+        }[]
+      }
+      get_pymk_suggestions: {
+        Args: { p_requesting_user_id: string; p_limit?: number }
+        Returns: {
+          suggested_user_id: string
+          user_name: string
+          user_avatar_url: string
+          score: number
+          reason: string
         }[]
       }
       get_rfq_statistics: {

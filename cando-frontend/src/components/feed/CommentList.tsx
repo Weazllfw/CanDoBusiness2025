@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchComments } from '../../lib/posts';
 import CommentItem from './CommentItem';
 import type { ThreadedComment } from './CommentItem';
-// import CommentForm from './CommentForm'; // Removed import
+import CommentForm from './CommentForm';
 import type { User } from '@supabase/supabase-js';
 
 interface CommentListProps {
@@ -16,7 +16,6 @@ interface CommentListProps {
   onReplySubmitted: (newReply: ThreadedComment) => void; // Add this callback prop
 }
 
-// export default function CommentList({ postId, currentUser }: CommentListProps) { // Original signature
 export default function CommentList({
   postId, 
   currentUser, 
@@ -25,8 +24,6 @@ export default function CommentList({
   error, 
   onReplySubmitted // Destructure the new prop
 }: CommentListProps) {
-  console.log('[CommentList] Rendered. typeof onReplySubmitted (prop received):', typeof onReplySubmitted, 'Value:', onReplySubmitted);
-
   const [sortedComments, setSortedComments] = useState<ThreadedComment[]>(comments);
   const [sortOption, setSortOption] = useState<'newest' | 'oldest' | 'most_liked'>('newest');
 
@@ -66,7 +63,6 @@ export default function CommentList({
   const renderComments = (commentList: ThreadedComment[]) => {
     return commentList.map(comment => {
       // Log what is being passed to each CommentItem
-      console.log(`[CommentList] Rendering CommentItem (key: ${comment.id}). typeof onReplySubmitted (to be passed):`, typeof onReplySubmitted);
       return (
         <CommentItem 
           key={comment.id} 

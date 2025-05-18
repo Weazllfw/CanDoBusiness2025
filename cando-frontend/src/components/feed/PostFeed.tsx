@@ -8,6 +8,7 @@ import LikeButton from './LikeButton'
 import CommentList from './CommentList'
 import CommentForm from './CommentForm'
 import { type ThreadedComment } from './CommentItem'
+import { type CommentWithAuthor } from '@/types/comments'
 import { fetchComments } from '../../lib/posts'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { User } from '@supabase/supabase-js'
@@ -38,7 +39,6 @@ function getRelativeTime(date: string) {
 }
 
 function PostCard({ post }: { post: FeedPost }) {
-  console.log('PostCard received post in PostFeed.tsx:', post); // Debug log
   const [isExpanded, setIsExpanded] = useState(false)
   const content = post.post_content || ''
   const isLongContent = content.length > 280
@@ -60,7 +60,6 @@ function PostCard({ post }: { post: FeedPost }) {
 
   const loadComments = useCallback(async () => {
     if (!post.post_id) return;
-    console.log(`[PostCard ${post.post_id}] loadComments called`);
     setIsLoadingComments(true);
     setCommentsError(null);
     const { data, error: fetchError } = await fetchComments(post.post_id);
@@ -80,8 +79,7 @@ function PostCard({ post }: { post: FeedPost }) {
     }
   }, [showComments, comments.length, post.post_id, loadComments, isLoadingComments]);
 
-  const handleNewTopLevelComment = useCallback((newComment: ThreadedComment) => {
-    console.log(`[PostCard ${post.post_id}] handleNewTopLevelComment called.`);
+  const handleNewTopLevelComment = useCallback((newComment: CommentWithAuthor) => {
     loadComments();
     setCommentCount(prevCount => prevCount + 1);
     if (!showComments) {
@@ -90,7 +88,6 @@ function PostCard({ post }: { post: FeedPost }) {
   }, [loadComments, showComments]);
 
   const handleCommentReply = useCallback((newReply: ThreadedComment) => {
-    console.log(`[PostCard ${post.post_id}] handleCommentReply called.`);
     loadComments();
   }, [loadComments]);
 
@@ -103,10 +100,8 @@ function PostCard({ post }: { post: FeedPost }) {
 
   if (showComments) {
     if (currentUser) {
-        console.log(`[PostCard ${post.post_id}] Preparing to render CommentForm. typeof handleNewTopLevelComment:`, typeof handleNewTopLevelComment);
     }
     if (!isLoadingComments && !commentsError) {
-        console.log(`[PostCard ${post.post_id}] Preparing to render CommentList. typeof handleCommentReply:`, typeof handleCommentReply);
     }
   }
 
@@ -253,11 +248,11 @@ function PostCard({ post }: { post: FeedPost }) {
                   postContent={post.post_content}
                 />
             </div>
-            {currentUser && (
+            {currentUser && post.author_user_id && (
               <FlagButton 
                 contentId={post.post_id} 
                 contentType="post" 
-                currentUserId={currentUser.id} 
+                contentOwnerId={post.author_user_id} 
               />
             )}
         </div>

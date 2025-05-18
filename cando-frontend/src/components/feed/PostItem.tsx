@@ -4,6 +4,7 @@ import { fetchComments } from '@/lib/posts'; // fetchComments now calls the RPC
 import CommentList from './CommentList';
 import CommentForm from './CommentForm';
 import { type ThreadedComment } from './CommentItem'; // For typing comments state
+import type { CommentWithAuthor } from '@/types/comments'; // Import CommentWithAuthor
 import type { User } from '@supabase/supabase-js';
 // Assuming other imports like User, Post types, LikeButton etc. are present
 
@@ -68,23 +69,15 @@ const PostItem = ({ post, currentUser }: PostItemProps) => {
     setShowComments(prevShowComments => !prevShowComments);
   }, [showComments, comments.length, isLoadingComments, loadCommentsForPost]);
 
-  const handleNewTopLevelComment = useCallback((newComment: ThreadedComment) => {
-    console.log('[PostItem] handleNewTopLevelComment called (useCallback).');
-    setComments(prevComments => [{ ...newComment, depth: 0 }, ...prevComments]);
+  const handleNewTopLevelComment = useCallback((newComment: CommentWithAuthor) => {
+    // Add depth for ThreadedComment structure
+    const commentWithDepth: ThreadedComment = { ...newComment, depth: 0, user_object: newComment.author };
+    setComments(prevComments => [commentWithDepth, ...prevComments]);
   }, []);
 
   const handleCommentReply = useCallback((newReply: ThreadedComment) => {
-    console.log('[PostItem] handleCommentReply called (useCallback).');
     loadCommentsForPost();
   }, [loadCommentsForPost]);
-
-  if (showComments && currentUser) {
-    console.log('[PostItem] Preparing to render CommentForm for top-level. typeof handleNewTopLevelComment:', typeof handleNewTopLevelComment);
-  }
-
-  if (showComments && !isLoadingComments && !commentError) {
-    console.log('[PostItem] Preparing to render CommentList. typeof handleCommentReply:', typeof handleCommentReply);
-  }
 
   return (
     <div className="bg-white shadow-md rounded-lg p-4 my-4">

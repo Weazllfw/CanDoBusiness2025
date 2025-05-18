@@ -217,10 +217,10 @@ const baseCompanySchemaObject = {
   certifications: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
 
-  // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
-  // self_attestation_completed: z.boolean().optional(),
-  // business_number: z.string().optional(),
-  // public_presence_links: z.array(z.string()).optional(), 
+  // Tier 1 Verification Fields -- Should be part of the general form
+  self_attestation_completed: z.boolean().optional(),
+  business_number: z.string().optional().or(z.literal('')), // Allow empty string
+  public_presence_links: z.array(z.string().url("Invalid URL").or(z.literal(''))).optional(), // Allow empty strings in array and ensure URL format
   industry: z.enum(predefinedIndustryKeys, { errorMap: () => ({ message: "Industry is required." }) }),
 };
 
@@ -298,10 +298,10 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
       social_media_links: initialData?.social_media_links || [],
       certifications: initialData?.certifications || [],
       tags: initialData?.tags || [],
-      // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
-      // self_attestation_completed: initialData?.self_attestation_completed || false,
-      // business_number: initialData?.business_number || '',
-      // public_presence_links: ensureStringArray(initialData?.public_presence_links),
+      // Tier 1 Verification Fields -- Should be part of the general form
+      self_attestation_completed: initialData?.self_attestation_completed || false,
+      business_number: initialData?.business_number || '',
+      public_presence_links: ensureStringArray(initialData?.public_presence_links),
     },
   });
 
@@ -343,10 +343,10 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
         social_media_links: initialData.social_media_links || [],
         certifications: initialData.certifications || [],
         tags: initialData.tags || [],
-        // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
-        // self_attestation_completed: initialData.self_attestation_completed || false,
-        // business_number: initialData.business_number || '',
-        // public_presence_links: ensureStringArray(initialData.public_presence_links),
+        // Tier 1 Verification Fields -- Should be part of the general form
+        self_attestation_completed: initialData.self_attestation_completed || false,
+        business_number: initialData.business_number || '',
+        public_presence_links: ensureStringArray(initialData.public_presence_links),
       });
       if (initialData.avatar_url) {
         setLogoPreview(initialData.avatar_url);
@@ -379,10 +379,10 @@ export default function CompanyForm({ initialData, onSubmit, isLoading, companyI
         social_media_links: [],
         certifications: [],
         tags: [],
-        // Tier 1 Verification Fields -- REMOVED FROM THIS FORM
-        // self_attestation_completed: false,
-        // business_number: '',
-        // public_presence_links: ensureStringArray(undefined),
+        // Tier 1 Verification Fields -- Should be part of the general form
+        self_attestation_completed: false,
+        business_number: '',
+        public_presence_links: ensureStringArray(undefined),
       });
       setLogoPreview(null);
     }

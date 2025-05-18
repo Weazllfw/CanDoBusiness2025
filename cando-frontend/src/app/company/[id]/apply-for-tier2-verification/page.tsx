@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 import Link from 'next/link';
+import { toast } from 'react-hot-toast';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -113,30 +114,11 @@ export default function ApplyForTier2VerificationPage() {
 
 
   const onSubmit = async (formData: Tier2VerificationFormData) => {
-    if (!company /* REMOVED || !user */) { // Temporarily remove !user check to see if authUser is the issue
-      setSubmissionError('Company data not loaded.');
-      return;
-    }
-    // Re-fetch user right before the operation to ensure freshest state
-    const { data: { user: authUser }, error: authUserError } = await supabase.auth.getUser();
-
-    if (authUserError) {
-      console.error('[Tier2Submit-Debug] Error fetching user right before upload:', authUserError);
-      setSubmissionError(`Authentication error before upload: ${authUserError.message}. Please try logging out and back in.`);
+    if (!company || !user) {
+      setSubmissionError('Company data or user session is missing. Please try again.');
       setIsSubmitting(false);
       return;
     }
-    if (!authUser) {
-      console.error('[Tier2Submit-Debug] No authenticated user found right before upload.');
-      setSubmissionError('No authenticated user session found. Please log out and back in.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    console.log('[Tier2Submit-Debug] User object just before storage upload:', JSON.stringify(authUser, null, 2));
-    console.log('[Tier2Submit-Debug] User ID for upload:', authUser.id);
-    console.log('[Tier2Submit-Debug] User Role for upload:', authUser.role);
-    console.log('[Tier2Submit-Debug] User Email for upload:', authUser.email);
 
     if (company.verification_status !== 'TIER1_VERIFIED') {
         setSubmissionError('Company is not eligible for Tier 2 verification.');

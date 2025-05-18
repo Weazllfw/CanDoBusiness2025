@@ -98,6 +98,10 @@ async function seedData() {
   const createdUsers = [];
   const createdCompanies = [];
   const createdPosts = [];
+  const createdComments = [];
+
+  let rmarshallUserId = null;
+  let candoBusinessCompanyId = null;
 
   try {
     // --- Create Specific CanDoBusiness User and Company ---
@@ -193,6 +197,9 @@ async function seedData() {
             } else {
                 console.log(`Company created: ${newCdbCompany.name} (Owner: ${cdbUserName})`);
                 createdCompanies.push({ ...newCdbCompany, owner: {id: cdbUserId, email: cdbUserEmail, name: cdbUserName } });
+                rmarshallUserId = cdbUserId;
+                candoBusinessCompanyId = newCdbCompany.id;
+                console.log(`CanDoBusiness user ${cdbUserName} (${cdbUserEmail}) and company '${cdbCompanyData.name}' created successfully.`);
             }
         }
     }
@@ -313,7 +320,99 @@ async function seedData() {
       console.log('Skipping comments: Not enough users or posts created.');
     }
 
+    // --- Create Interconnected Data for Suggestions ---
+    console.log('--- Creating Interconnected Data for Suggestions ---');
+    if (rmarshallUserId && createdUsers.length > 1) {
+      const NUM_RMARSHALL_DIRECT_CONNECTIONS = Math.min(3, createdUsers.length -1); // Connect rmarshall to up to 3 other users
+      const otherUsers = createdUsers.filter(u => u.id !== rmarshallUserId);
+      const rmarshallDirectConnections = [];
+
+      console.log(`Creating direct connections for rmarshall (${rmarshallUserId})...`);
+      for (let i = 0; i < NUM_RMARSHALL_DIRECT_CONNECTIONS && i < otherUsers.length; i++) {
+        const targetUser = otherUsers[i];
+        const { data: conn, error: connError } = await supabase.from('user_connections').insert([
+          { requester_id: rmarshallUserId, addressee_id: targetUser.id, status: 'ACCEPTED' },
+          { requester_id: targetUser.id, addressee_id: rmarshallUserId, status: 'ACCEPTED' } // Mutual connection
+        ]).select();
+
+        if (connError) {
+          console.error(`Error creating connection between ${rmarshallUserId} and ${targetUser.id}:`, connError.message);
+        } else if (conn) {
+          console.log(`Created accepted connection between rmarshall and ${targetUser.email}`);
+          rmarshallDirectConnections.push(targetUser);
+        }
+      }
+
+      // Create 2nd-degree connections for PYMK (connections of rmarshall's connections)
+      console.log('Creating 2nd-degree connections for rmarshall\'s PYMK suggestions...');
+      const NUM_SECOND_DEGREE_TARGETS = Math.min(2, otherUsers.length - NUM_RMARSHALL_DIRECT_CONNECTIONS);
+
+      for (const directConnection of rmarshallDirectConnections) {
+        const potentialSecondDegreeUsers = otherUsers.filter(
+          u => u.id !== directConnection.id && !rmarshallDirectConnections.find(dc => dc.id === u.id) && u.id !== rmarshallUserId
+        );
+        for (let j = 0; j < NUM_SECOND_DEGREE_TARGETS && j < potentialSecondDegreeUsers.length; j++) {
+          const secondDegreeTarget = potentialSecondDegreeUsers[j];
+          const { error: sdConnError } = await supabase.from('user_connections').insert([
+            { requester_id: directConnection.id, addressee_id: secondDegreeTarget.id, status: 'ACCEPTED' },
+            { requester_id: secondDegreeTarget.id, addressee_id: directConnection.id, status: 'ACCEPTED' }
+          ]);
+          if (sdConnError) {
+            console.error(`Error creating 2nd-degree connection between ${directConnection.email} and ${secondDegreeTarget.email}:`, sdConnError.message);
+          } else {
+            console.log(`Created 2nd-degree connection: ${directConnection.email} <-> ${secondDegreeTarget.email}`);
+          }
+        }
+      }
+
+      // Make rmarshall's connections follow some companies for CYMK
+      console.log('Making rmarshall\'s connections follow companies for CYMK suggestions...');
+      const companiesNotOwnedByRmarshall = createdCompanies.filter(c => c.id !== candoBusinessCompanyId); // Simple filter for now
+      const NUM_COMPANIES_TO_FOLLOW_PER_CONNECTION = Math.min(2, companiesNotOwnedByRmarshall.length);
+
+      if (companiesNotOwnedByRmarshall.length > 0) {
+        for (const directConnection of rmarshallDirectConnections) {
+          const companiesToFollow = getRandomElements(companiesNotOwnedByRmarshall, NUM_COMPANIES_TO_FOLLOW_PER_CONNECTION);
+          for (const companyToFollow of companiesToFollow) {
+            // Ensure the connection isn't already following this company (idempotency check)
+            const { data: existingFollow, error: checkError } = await supabase
+              .from('user_company_follows')
+              .select('user_id')
+              .eq('user_id', directConnection.id)
+              .eq('company_id', companyToFollow.id)
+              .maybeSingle();
+
+            if (checkError) {
+                console.error(`Error checking existing follow for ${directConnection.email} and ${companyToFollow.name}:`, checkError.message);
+                continue;
+            }
+            if (existingFollow) {
+                console.log(`${directConnection.email} already follows ${companyToFollow.name}.`);
+                continue;
+            }
+
+            const { error: followError } = await supabase.from('user_company_follows').insert({
+              user_id: directConnection.id,
+              company_id: companyToFollow.id,
+              role: 'follower' // or another relevant role
+            });
+            if (followError) {
+              console.error(`Error making ${directConnection.email} follow ${companyToFollow.name}:`, followError.message);
+            } else {
+              console.log(`${directConnection.email} now follows ${companyToFollow.name}`);
+            }
+          }
+        }
+      } else {
+        console.log('No suitable companies for rmarshall\'s connections to follow for CYMK.');
+      }
+    } else {
+      console.log('Not enough users to create interconnected data for rmarshall or rmarshall not found.');
+    }
+
     console.log('--- Dev Data Seeding Script Finished Successfully ---');
+    console.log(`Created: ${createdUsers.length} users, ${createdCompanies.length} companies, ${createdPosts.length} posts, ${createdComments.length} comments.`);
+    if (rmarshallUserId) console.log(`Special user rmarshall@candobusiness.ca created with ID: ${rmarshallUserId}`);
 
   } catch (error) {
     console.error('!!! --- An unexpected error occurred during seeding --- !!!', error);

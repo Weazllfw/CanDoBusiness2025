@@ -1,84 +1,96 @@
 'use client'
 
-import { useState } from 'react';
-import FlagModal from './FlagModal'; // Uncommented and imported
-import { ShieldExclamationIcon } from '@heroicons/react/24/outline'; // Example icon
-import { submitFlag } from '../../lib/flags'; // Import submitFlag
+import { useState, Fragment, useEffect } from 'react';
+import { FlagIcon } from '@heroicons/react/24/outline';
+import { Dialog, Transition } from '@headlessui/react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
+import type { User } from '@supabase/supabase-js';
+import toast from 'react-hot-toast';
 
 interface FlagButtonProps {
-  contentId: string;
   contentType: 'post' | 'comment';
-  currentUserId: string | undefined; // To ensure user is logged in
+  contentId: string;
+  contentOwnerId: string;
 }
 
-export default function FlagButton({ contentId, contentType, currentUserId }: FlagButtonProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  // Optional: Add a state to track if the current user has already flagged this item
-  // const [hasFlagged, setHasFlagged] = useState(false); 
-  // This would require fetching initial flag status or checking after a flag attempt.
+export default function FlagButton({ contentType, contentId, contentOwnerId }: FlagButtonProps) {
+  const supabase = createClientComponentClient<Database>();
+  const [isOpen, setIsOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const handleOpenModal = () => {
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id || null);
+    };
+    fetchUser();
+  }, [supabase]);
+
+  const openModal = () => {
     if (!currentUserId) {
-      // Optionally, redirect to login or show a message
-      alert('You must be logged in to flag content.');
+      toast.error('You must be logged in to flag content.');
       return;
     }
-    // if (hasFlagged) { // Optional: Prevent opening modal if already flagged
-    //   alert('You have already flagged this content.');
-    //   return;
-    // }
-    setIsModalOpen(true);
+    if (currentUserId === contentOwnerId) {
+      toast.error("You cannot flag your own content.");
+      return;
+    }
     console.log(`Opening flag modal for ${contentType} ID: ${contentId}`);
+    setIsOpen(true);
   };
+  const closeModal = () => setIsOpen(false);
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-  };
-
-  const handleSubmitFlag = async (reason: string | null) => {
+  const handleSubmitFlag = async () => {
+    if (!reason.trim()) {
+      toast.error('Please provide a reason for flagging.');
+      return;
+    }
     if (!currentUserId) {
-      alert('User session ended. Please log in again to flag content.');
-      handleCloseModal();
+      toast.error('User session not found. Please log in again.');
       return;
     }
 
     console.log(`Attempting to submit flag for ${contentType} ID: ${contentId} by user ${currentUserId} with reason: "${reason || ''}"`);
-    
-    const { data, error } = await submitFlag(contentId, contentType, reason, currentUserId);
+
+    const flagData = {
+      user_id: currentUserId,
+      reason: reason,
+      status: 'pending_review' as const,
+      ...(contentType === 'post' ? { post_id: contentId } : { comment_id: contentId }),
+    };
+
+    const { data, error } = await supabase
+      .from(contentType === 'post' ? 'post_flags' : 'comment_flags')
+      .insert(flagData)
+      .select();
 
     if (error) {
-      console.error('Error submitting flag:', error);
-      alert(`Failed to flag ${contentType}: ${error.message}`);
-      // setHasFlagged(error.message.includes('already flagged')); // Update if it was a duplicate flag error
-    } else if (data) {
-      console.log('Flag submitted successfully:', data);
-      alert(`Successfully flagged ${contentType}. Thank you for your feedback.`);
-      // setHasFlagged(true); // Mark as flagged to prevent re-flagging UI interaction
+      console.error(`Error submitting flag for ${contentType} ${contentId}:`, error);
+      toast.error(`Failed to submit flag: ${error.message}`);
+    } else {
+      // console.log('Flag submitted successfully:', data);
+      toast.success('Content flagged successfully. A moderator will review it shortly.');
+      closeModal();
+      setReason('');
     }
-    handleCloseModal();
   };
 
   return (
     <>
       <button
-        onClick={handleOpenModal}
-        // disabled={hasFlagged} // Optional: Disable button if already flagged
-        className="flex items-center space-x-1 text-xs text-gray-500 hover:text-red-600 focus:outline-none disabled:opacity-50 disabled:hover:text-gray-500 disabled:cursor-not-allowed"
-        title={/*hasFlagged ? `You have flagged this ${contentType}` :*/ `Flag this ${contentType}`}
+        onClick={openModal}
+        className="flex items-center space-x-1 text-gray-500 hover:text-red-600 transition-colors duration-150 p-1 rounded-md"
+        title="Flag content as inappropriate"
       >
-        <ShieldExclamationIcon className="h-4 w-4" />
-        <span>{/*hasFlagged ? 'Flagged' :*/ 'Flag'}</span>
+        <FlagIcon className="h-4 w-4" />
+        <span className="text-xs hidden sm:inline">Flag</span>
       </button>
 
-      {isModalOpen && (
-        <FlagModal 
-          contentId={contentId} 
-          contentType={contentType} 
-          onClose={handleCloseModal} 
-          onSubmit={handleSubmitFlag} 
-          currentUserId={currentUserId}
-        />
-      )}
+      <Transition appear show={isOpen} as={Fragment}>
+        {/* ... Modal JSX ... */}
+      </Transition>
     </>
   );
 } 

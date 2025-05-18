@@ -7,6 +7,7 @@ import CompanyForm, { type CompanyFormData } from '@/components/company/CompanyF
 import type { Database } from '@/types/supabase'
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
+import { toast } from 'react-hot-toast';
 
 type CompanyDbRow = Database['public']['Tables']['companies']['Row'];
 
@@ -20,6 +21,9 @@ export default function EditCompanyPage() {
   const [formInitialData, setFormInitialData] = useState<(Partial<CompanyFormData> & { owner_id?: string | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
 
   const fetchCompanyData = useCallback(async (id: string) => {
     setIsLoading(true);
@@ -103,9 +107,11 @@ export default function EditCompanyPage() {
     try {
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       if (authError || !session) {
-        throw new Error('Authentication required. Please log in.');
+        toast.error('You must be logged in to edit a company.');
+        router.push('/login');
+        return;
       }
-      console.log('[EditCompanyPage] Current User ID (auth.uid()):', session.user.id);
+      // console.log('[EditCompanyPage] Current User ID (auth.uid()):', session.user.id);
 
       if (fetchedCompanyData?.owner_id && session.user.id !== fetchedCompanyData.owner_id) {
           throw new Error("You are not authorized to edit this company.");
@@ -116,16 +122,12 @@ export default function EditCompanyPage() {
       if (newLogoFile) {
         const fileExt = newLogoFile.name.split('.').pop();
         const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `${companyId}/${fileName}`;
+        const filePath = `company-logos/${companyId}/${fileName}`;
+        // console.log('[EditCompanyPage] Uploading logo. Company ID:', companyId, 'File path:', filePath);
 
-        console.log('[EditCompanyPage] Uploading logo. Company ID:', companyId, 'File path:', filePath);
-
-        const { error: uploadError } = await supabase.storage
-          .from('company-logos')
-          .upload(filePath, newLogoFile, {
-            cacheControl: '3600',
-            upsert: true, 
-          });
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('company_assets')
+          .upload(filePath, newLogoFile, { cacheControl: '3600', upsert: true });
 
         if (uploadError) {
           throw new Error(`Failed to upload new logo: ${uploadError.message}`);

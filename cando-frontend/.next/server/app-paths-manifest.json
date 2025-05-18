@@ -2,7 +2,5 @@
   "/not-found": "app/not-found.js",
   "/auth/login/page": "app/auth/login/page.js",
   "/feed/page": "app/feed/page.js",
-  "/dashboard/companies/page": "app/dashboard/companies/page.js",
-  "/company/[id]/edit/page": "app/company/[id]/edit/page.js",
-  "/page": "app/page.js"
+  "/dashboard/companies/page": "app/dashboard/companies/page.js"
 }
