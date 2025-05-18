@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 
-type Company = Database['public']['Tables']['companies']['Row']
+type Company = Database['public']['Functions']['get_user_companies']['Returns'][number]
 
 export function useActiveCompany(userId: string, initialCompany?: Company) {
   const [activeCompany, setActiveCompany] = useState<Company | null>(initialCompany || null)
@@ -14,7 +14,7 @@ export function useActiveCompany(userId: string, initialCompany?: Company) {
     async function loadCompanies() {
       try {
         const { data, error } = await supabase
-          .rpc('get_user_companies', { user_id: userId })
+          .rpc('get_user_companies', { user_id_param: userId })
 
         if (error) throw error
 

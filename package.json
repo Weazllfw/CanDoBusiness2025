@@ -1,6 +1,18 @@
 {
   "dependencies": {
     "@types/date-fns": "^2.5.3",
-    "date-fns": "^4.1.0"
+    "browser-image-compression": "^2.0.2",
+    "date-fns": "^4.1.0",
+    "react-hot-toast": "^2.5.2",
+    "uuid": "^11.1.0"
+  },
+  "scripts": {
+    "test:analytics": "ts-node -r tsconfig-paths/register scripts/test-analytics.ts",
+    "db:seed:dev": "node ./scripts/seed-dev-data.js"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
   }
 }

@@ -4,14 +4,16 @@ import { useState, useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'
 import Sidebar from '@/components/layout/Sidebar'
+import { Analytics } from '@/lib/analytics'
+import { User } from '@supabase/supabase-js'
 
 type RFQ = Database['public']['Tables']['rfqs']['Row'] & {
   companies?: {
     id: string
     name: string
-  }
+  } | null
 }
 
 export default function RFQListPage() {
@@ -20,11 +22,37 @@ export default function RFQListPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [industry, setIndustry] = useState('')
   const [region, setRegion] = useState('')
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
   const supabase = createClientComponentClient<Database>()
 
   useEffect(() => {
     loadRFQs()
-  }, [])
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    fetchUser();
+  }, [supabase])
+
+  const filteredRFQs = rfqs.filter(rfq =>
+    (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+  )
+
+  useEffect(() => {
+    if (currentUser && searchTerm.trim() !== '') {
+      const handler = setTimeout(() => {
+        const currentFilteredCount = rfqs.filter(rfq =>
+          (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+          (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+          (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+        ).length;
+        Analytics.trackSearch(currentUser.id, searchTerm, currentFilteredCount);
+      }, 500);
+      return () => clearTimeout(handler);
+    }
+  }, [searchTerm, currentUser, rfqs]);
 
   const loadRFQs = async () => {
     try {
@@ -42,19 +70,14 @@ export default function RFQListPage() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setRfqs(data as RFQ[])
+      setRfqs(data as RFQ[] || [])
     } catch (error) {
       console.error('Error loading RFQs:', error)
+      setRfqs([]);
     } finally {
       setIsLoading(false)
     }
   }
-
-  const filteredRFQs = rfqs.filter(rfq =>
-    rfq.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    rfq.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  )
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -122,7 +145,7 @@ export default function RFQListPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="bg-primary-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold">
-                        {rfq.companies?.name[0]}
+                        {rfq.companies?.name?.[0] || 'N'}
                       </div>
                       <div>
                         <h3 className="text-lg font-medium text-gray-900">
@@ -131,7 +154,7 @@ export default function RFQListPage() {
                           </Link>
                         </h3>
                         <p className="text-sm text-gray-500">
-                          {rfq.companies?.name} • {formatDistanceToNow(new Date(rfq.created_at), { addSuffix: true })}
+                          {rfq.companies?.name || 'Unknown Company'} • {rfq.created_at ? formatDistanceToNow(new Date(rfq.created_at), { addSuffix: true }) : 'Date N/A'}
                         </p>
                       </div>
                     </div>

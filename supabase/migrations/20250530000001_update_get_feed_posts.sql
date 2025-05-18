@@ -1,3 +1,6 @@
+-- Drop the existing function first
+DROP FUNCTION IF EXISTS get_feed_posts(UUID, INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION get_feed_posts(
     p_user_id UUID,
     p_limit INTEGER DEFAULT 10,

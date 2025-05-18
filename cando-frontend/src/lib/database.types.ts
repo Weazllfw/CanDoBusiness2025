@@ -17,6 +17,10 @@ export interface Database {
           user_id: string
           media_url: string | null
           media_type: string | null
+          category: Database['public']['Enums']['post_category']
+          author_subscription_tier: string | null
+          company_id: string | null
+          status: 'visible' | 'removed_by_admin'
         }
         Insert: {
           id?: string
@@ -25,6 +29,10 @@ export interface Database {
           user_id: string
           media_url?: string | null
           media_type?: string | null
+          category?: Database['public']['Enums']['post_category']
+          author_subscription_tier?: string | null
+          company_id?: string | null
+          status?: 'visible' | 'removed_by_admin'
         }
         Update: {
           id?: string
@@ -33,6 +41,10 @@ export interface Database {
           user_id?: string
           media_url?: string | null
           media_type?: string | null
+          category?: Database['public']['Enums']['post_category']
+          author_subscription_tier?: string | null
+          company_id?: string | null
+          status?: 'visible' | 'removed_by_admin'
         }
       }
       post_bookmarks: {
@@ -146,7 +158,7 @@ export interface Database {
       }
     }
     Enums: {
-      [_ in never]: never
+      post_category: 'general' | 'business_update' | 'industry_news' | 'job_opportunity' | 'event' | 'question' | 'partnership' | 'product_launch'
     }
   }
 } 

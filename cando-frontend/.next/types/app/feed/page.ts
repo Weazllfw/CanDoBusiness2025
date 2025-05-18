@@ -1,4 +1,4 @@
-// File: C:\Users\weazl\Documents\gitHub\CanDoBusiness2025\cando-frontend\src\app\feed\page.tsx
+// File: D:\Projects\CanDoBusiness\gitHub\CanDoBusiness2025\cando-frontend\src\app\feed\page.tsx
 import * as entry from '../../../../src/app/feed/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

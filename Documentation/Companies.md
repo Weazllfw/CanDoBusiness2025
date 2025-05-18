@@ -66,7 +66,7 @@ To control data exposure and provide a comprehensive, denormalized view of compa
 
 ### 2.3. Key Functions
 
-#### `public.get_user_companies(p_user_id UUID)`
+#### `public.get_user_companies(user_id_param uuid)`
 
 -   **Purpose:** Fetches all companies owned by a specific user, primarily for populating user-specific dashboards and selectors.
 -   **Returns:** `SETOF public.companies_view`. This ensures that the function returns the most up-to-date and comprehensive set of company fields as defined in the `companies_view`.
@@ -74,7 +74,7 @@ To control data exposure and provide a comprehensive, denormalized view of compa
 -   **Usage:** Called by frontend components like `CompanySelector.tsx` and the user's company management page (`/dashboard/companies`) to populate lists of companies for the current user.
     ```sql
     -- Conceptual representation, actual function refers to the dynamic view
-    CREATE OR REPLACE FUNCTION public.get_user_companies(p_user_id UUID)
+    CREATE OR REPLACE FUNCTION public.get_user_companies(user_id_param uuid)
     RETURNS SETOF public.companies_view
     LANGUAGE sql
     SECURITY DEFINER
@@ -82,7 +82,7 @@ To control data exposure and provide a comprehensive, denormalized view of compa
     AS $$
       SELECT * -- All columns from companies_view
       FROM public.companies_view
-      WHERE owner_id = p_user_id;
+      WHERE owner_id = user_id_param;
     $$;
     ```
 

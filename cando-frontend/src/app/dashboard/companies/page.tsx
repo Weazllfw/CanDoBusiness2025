@@ -92,7 +92,7 @@ export default function ManageCompaniesPage() {
       try {
         // get_user_companies now returns SETOF companies_view based on our migrations
         const { data, error: rpcError } = await supabase.rpc('get_user_companies', {
-          p_user_id: userId, // Ensure param name matches the function definition
+          user_id_param: userId, // Ensure param name matches the function definition
         })
 
         if (rpcError) throw rpcError

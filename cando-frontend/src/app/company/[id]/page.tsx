@@ -8,6 +8,7 @@ import type { Database } from '@/types/supabase'
 import Link from 'next/link'
 import Image from 'next/image' // For avatar and banner
 import { User } from '@supabase/supabase-js' // For session user type
+import { Analytics } from '@/lib/analytics'; // Import Analytics
 
 // Define a type for the company data we expect from the view
 type CompanyProfileView = Database['public']['Views']['companies_view']['Row'];
@@ -69,6 +70,12 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
       setIsLoading(false);
     }
   }, [companyId, fetchCompanyData, fetchCurrentUser]);
+
+  useEffect(() => {
+    if (currentUser && company && companyId) {
+      Analytics.trackCompanyView(currentUser.id, companyId);
+    }
+  }, [currentUser, company, companyId]);
 
   if (isLoading) {
     return (

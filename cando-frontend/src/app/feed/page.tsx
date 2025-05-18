@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs' // Import specific client
 import { type User } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase' // Ensure Database type is imported
+import { Analytics } from '@/lib/analytics'; // Import Analytics
 
 export type PostCategory = 
   | 'general'
@@ -25,22 +26,23 @@ export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
   job_opportunity: 'Job Opportunity',
   event: 'Event',
   question: 'Question',
-  partnership: 'Partnership',
-  product_launch: 'Product Launch'
+  partnership: 'Partnership/Collaboration',
+  product_launch: 'Product Launch',
 };
 
+// Define FeedPost interface to match the one in PostFeed.tsx
 export interface FeedPost {
   post_id: string;
   post_content: string;
   post_created_at: string;
-  post_category: PostCategory;
-  post_media_url: string | null;
-  post_media_type: string | null;
+  post_category: string; // Should ideally be PostCategory type
+  post_media_urls?: string[];
+  post_media_types?: string[];
   author_user_id: string;
   author_name: string;
   author_avatar_url: string;
-  author_subscription_tier: string | null;
-  company_id: string | null;
+  author_subscription_tier?: string;
+  company_id: string | null; // company_id can be null
   company_name: string | null;
   company_avatar_url: string | null;
   like_count: number;
@@ -48,7 +50,7 @@ export interface FeedPost {
   bookmark_count: number;
   is_liked_by_current_user: boolean;
   is_bookmarked_by_current_user: boolean;
-  is_network_post: number;
+  is_network_post: number; // Assuming 0 or 1
 }
 
 const POSTS_PER_PAGE = 10;
@@ -62,7 +64,7 @@ export default function FeedPage() {
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
-  const [selectedCategory, setSelectedCategory] = useState<PostCategory | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -94,16 +96,18 @@ export default function FeedPage() {
     setError(null);
 
     try {
+      const categoryParam = selectedCategory === '' ? undefined : selectedCategory as PostCategory;
+      
       const { data, error: rpcError } = await supabase.rpc('get_feed_posts', {
         p_user_id: user.id,
         p_limit: POSTS_PER_PAGE,
         p_offset: (page - 1) * POSTS_PER_PAGE,
-        p_category: selectedCategory
+        p_category: categoryParam
       });
 
       if (rpcError) throw rpcError;
 
-      const newPosts = (data || []) as FeedPost[];
+      const newPosts = (data || []) as FeedPost[]; 
       setPosts((prevPosts) => page === 1 ? newPosts : [...prevPosts, ...newPosts]);
       setHasMore(newPosts.length === POSTS_PER_PAGE);
       setCurrentPage(page);
@@ -121,7 +125,15 @@ export default function FeedPage() {
     if (user && !isUserLoading) {
       setPosts([]);
       setCurrentPage(1);
-      fetchPosts(1);
+      fetchPosts(1); // This will fetch posts for the new category
+
+      // Track category selection as a search event
+      if (selectedCategory !== '') {
+        // We don't have the result count immediately here, 
+        // but we can track the intent. Or, track after fetchPosts completes.
+        // For simplicity, tracking intent now.
+        Analytics.trackSearch(user.id, `category:${selectedCategory}`, 0); // resultCount can be updated later if needed
+      }
     }
   }, [selectedCategory, user, isUserLoading, fetchPosts]);
 
@@ -190,8 +202,8 @@ export default function FeedPage() {
           </label>
           <select
             id="category"
-            value={selectedCategory || ''}
-            onChange={(e) => setSelectedCategory(e.target.value as PostCategory | null)}
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
             className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
           >
             <option value="">All Categories</option>
@@ -203,7 +215,7 @@ export default function FeedPage() {
           </select>
         </div>
 
-        <CreatePost companyId="" onPostCreated={handlePostCreated} />
+        <CreatePost onPostCreated={handlePostCreated} />
         
         {isLoadingPosts && posts.length === 0 && <div className="text-center py-10">Loading posts...</div>}
         

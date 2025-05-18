@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import Image from 'next/image'
-import { FeedPost } from '../../app/feed/page'
+import { type FeedPost } from '../../app/feed/page'
 import LikeButton from './LikeButton'
 import CommentList from './CommentList'
 import CommentForm from './CommentForm'
@@ -14,11 +13,28 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { User } from '@supabase/supabase-js'
 import FlagButton from './FlagButton'
 import BookmarkButton from './BookmarkButton'
+import ShareButton from './ShareButton'
 
 interface PostFeedProps {
   initialPosts: FeedPost[]
   onLoadMore: () => Promise<void>
   hasMore: boolean
+}
+
+function getRelativeTime(date: string) {
+  const now = new Date();
+  const then = new Date(date);
+  const diff = now.getTime() - then.getTime();
+  
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return 'just now';
 }
 
 function PostCard({ post }: { post: FeedPost }) {
@@ -98,7 +114,19 @@ function PostCard({ post }: { post: FeedPost }) {
     <article className="bg-white rounded-lg shadow p-6 mb-4">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          {post.author_avatar_url && (
+          {/* Author/Company Avatar Logic */}
+          {post.company_id && post.company_avatar_url ? (
+            <Link href={`/company/${post.company_id}`} passHref>
+              <Image 
+                src={post.company_avatar_url} 
+                alt={post.company_name || 'Company'} 
+                width={40} 
+                height={40} 
+                className="rounded-full cursor-pointer"
+              />
+            </Link>
+          ) : post.author_avatar_url ? (
+            // TODO: Add Link to user profile if/when available
             <Image 
               src={post.author_avatar_url} 
               alt={post.author_name || 'Author'} 
@@ -106,26 +134,36 @@ function PostCard({ post }: { post: FeedPost }) {
               height={40} 
               className="rounded-full"
             />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white font-semibold">
+              {post.company_id && post.company_name ? post.company_name.charAt(0).toUpperCase() : post.author_name ? post.author_name.charAt(0).toUpperCase() : 'U'}
+            </div>
           )}
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-col">
+              {/* Author/Company Name Logic */}
+              {post.company_id && post.company_name ? (
+                <>
+                  <Link
+                      href={`/company/${post.company_id}`}
+                      className="text-lg font-semibold text-gray-900 hover:text-blue-600"
+                  >
+                      {post.company_name}
+                  </Link>
+                  {/* Optionally display the user who posted on behalf of the company */}
+                  <span className="text-xs text-gray-500">
+                    Posted by {post.author_name || 'User'}
+                  </span>
+                </>
+              ) : (
                 <span className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                    {post.author_name || 'Anonymous User'}
+                  {/* TODO: Add Link to user profile if/when available */}
+                  {post.author_name || 'Anonymous User'}
                 </span>
-                {post.company_id && post.company_name && (
-                    <>
-                        <span className="text-gray-500">at</span>
-                        <Link
-                            href={`/company/${post.company_id}`}
-                            className="text-lg font-semibold text-blue-700 hover:text-blue-800"
-                        >
-                            {post.company_name}
-                        </Link>
-                    </>
-                )}
+              )}
             </div>
             <p className="text-sm text-gray-500">
-              {formatDistanceToNow(new Date(post.post_created_at), { addSuffix: true })}
+              {getRelativeTime(post.post_created_at)}
             </p>
           </div>
         </div>
@@ -149,22 +187,37 @@ function PostCard({ post }: { post: FeedPost }) {
         </div>
       )}
 
-      {post.post_media_url && post.post_media_type?.startsWith('image/') && (
-        <div style={{ width: '300px', height: '200px', position: 'relative' }}>
-          <img
-            src={post.post_media_url.trim()}
-            alt={post.post_content || "Post media"}
-            style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-            }}
-          />
-        </div>
-      )}
-      {post.post_media_url && post.post_media_type?.startsWith('video/') && (
-        <div style={{ width: '300px', height: '200px', position: 'relative' }}>
-          <video controls src={post.post_media_url} className="w-full h-full rounded-md" style={{ objectFit: 'contain' }} />
+      {post.post_media_urls && post.post_media_urls.length > 0 && (
+        <div className={`grid ${post.post_media_urls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mb-4`}>
+          {post.post_media_urls.map((url: string, index: number) => {
+            const mediaType = post.post_media_types?.[index] || '';
+            
+            if (mediaType.startsWith('image/')) {
+              return (
+                <div key={index} className="relative aspect-square">
+                  <img
+                    src={url.trim()}
+                    alt={`Post media ${index + 1}`}
+                    className="w-full h-full object-cover rounded-md"
+                  />
+                </div>
+              );
+            }
+            
+            if (mediaType.startsWith('video/')) {
+              return (
+                <div key={index} className="relative aspect-video">
+                  <video 
+                    controls 
+                    src={url} 
+                    className="w-full h-full rounded-md"
+                  />
+                </div>
+              );
+            }
+            
+            return null;
+          })}
         </div>
       )}
 
@@ -194,6 +247,10 @@ function PostCard({ post }: { post: FeedPost }) {
                   userId={currentUser?.id}
                   initialBookmarkCount={post.bookmark_count}
                   isInitiallyBookmarked={post.is_bookmarked_by_current_user}
+                />
+                <ShareButton
+                  postId={post.post_id}
+                  postContent={post.post_content}
                 />
             </div>
             {currentUser && (

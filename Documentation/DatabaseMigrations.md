@@ -547,17 +547,17 @@ This document provides a summary of the database migrations applied to the proje
 
 ## `20250523103000_create_post_media_storage.sql`
 
-**Purpose:** Configures secure storage for post media files. Idempotent.
+**Purpose:** Configures secure storage for post media (images/videos). Idempotent.
 
 **Key Changes:**
-*   Creates 'post_media' storage bucket:
-    *   5MB file size limit
-    *   Supports images (JPEG, PNG, GIF, WebP)
-    *   Public bucket with RLS controls
-*   Implements RLS policies:
-    *   Public read for 'public/' path
-    *   User-specific upload paths
-    *   Owner-only deletion rights
+*   Creates `post_media` storage bucket:
+    *   Public access for read operations (`public: true`).
+    *   5MB file size limit.
+    *   Allowed MIME types: `image/jpeg`, `image/png`, `image/gif`, `image/webp`.
+*   Implements storage RLS policies for `storage.objects` in the `post_media` bucket:
+    *   Authenticated users can upload to their own designated paths (e.g., `public/{user_id}/{filename}`).
+    *   Public read access for files under the `public/` path.
+    *   Authenticated users can delete their own uploaded files.
 
 ---
 
@@ -669,3 +669,46 @@ This document provides a summary of the database migrations applied to the proje
     *   Preserves sort order
 *   Optimizes for performance
 *   Supports unlimited nesting
+
+---
+
+## `20250531000001_add_multiple_images_support.sql`
+
+**Purpose:** Enhances the `posts` table and related functions to support multiple media items (images/videos) per post. Idempotent.
+
+**Key Changes:**
+*   **Posts Table (`public.posts`):**
+    *   Renames existing `media_url` and `media_type` columns to `old_media_url` and `old_media_type` respectively.
+    *   Adds new array columns: `media_urls TEXT[] DEFAULT '{}'` and `media_types TEXT[] DEFAULT '{}'`.
+    *   Migrates data from old single media columns to the new array columns.
+    *   Drops the `old_media_url` and `old_media_type` columns.
+    *   Adds constraints:
+        *   `max_media_items`: Limits the number of media items to 5 per post (checks array length of `media_urls` and `media_types`).
+        *   `media_arrays_same_length`: Ensures `media_urls` and `media_types` arrays have the same length.
+*   **`get_feed_posts` Function:**
+    *   Drops existing versions of the function (if they exist) to avoid return type conflicts.
+    *   Recreates `get_feed_posts(p_user_id UUID, p_limit INTEGER, p_offset INTEGER, p_category post_category)`.
+    *   Updates the `RETURNS TABLE` definition to include `post_media_urls TEXT[]` and `post_media_types TEXT[]`.
+    *   The function logic is updated to select `p.media_urls` and `p.media_types` from the `posts` table.
+    *   Fixes an ambiguous `company_id` reference in a subquery by aliasing `user_company_follows` to `ucf` and using `ucf.company_id`.
+
+---
+
+## `20250531000002_add_analytics_events.sql`
+
+**Purpose:** Introduces a table and related functions for collecting analytics events, primarily for Pro-tier users. Idempotent.
+
+**Key Changes:**
+*   **`analytics_events` Table (`public.analytics_events`):**
+    *   Creates the table to store individual analytics events.
+    *   Columns: `id UUID`, `user_id UUID` (references `auth.users`), `event_type TEXT`, `event_data JSONB`, `created_at TIMESTAMPTZ`.
+    *   `event_type` has a `CHECK` constraint to ensure it's one of the predefined valid event types (e.g., `post_view`, `post_create`, `company_view`, etc.).
+    *   Adds indexes on `user_id`, `event_type`, and `created_at` for performance.
+*   **RLS Policies for `analytics_events`:**
+    *   `Allow Pro users to insert events`: Allows authenticated users with an active 'PRO' subscription (checked via `user_subscriptions` table) to insert records.
+    *   `Users can read their own events`: Allows authenticated users to select only their own events.
+*   **`get_user_analytics` Function (`public.get_user_analytics`):**
+    *   Creates a function `get_user_analytics(p_user_id UUID, p_start_date TIMESTAMPTZ, p_end_date TIMESTAMPTZ)`.
+    *   `SECURITY DEFINER` function.
+    *   Checks if the `p_user_id` has an active 'PRO' subscription. If not, returns no data.
+    *   Returns a table with aggregated event counts (`event_type`, `event_count`, `first_occurrence`, `last_occurrence`) for the specified user and date range.

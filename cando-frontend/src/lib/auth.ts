@@ -40,7 +40,7 @@ export async function getUserCompanies(userId: string) {
   try {
     const supabase = createServerSupabaseClient()
     const { data, error } = await supabase
-      .rpc('get_user_companies', { user_id: userId })
+      .rpc('get_user_companies', { user_id_param: userId })
     
     if (error) {
       console.error('Error fetching user companies:', error)

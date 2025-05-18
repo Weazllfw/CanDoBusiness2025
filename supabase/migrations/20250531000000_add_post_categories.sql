@@ -14,6 +14,11 @@ CREATE TYPE post_category AS ENUM (
 ALTER TABLE public.posts
 ADD COLUMN category post_category NOT NULL DEFAULT 'general';
 
+-- Drop all previous versions of get_feed_posts
+DROP FUNCTION IF EXISTS get_feed_posts(UUID, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS get_feed_posts(UUID, INTEGER, INTEGER, post_category);
+DROP FUNCTION IF EXISTS get_feed_posts(p_user_id UUID, p_limit INTEGER, p_offset INTEGER);
+
 -- Update the get_feed_posts function to include category
 CREATE OR REPLACE FUNCTION get_feed_posts(
     p_user_id UUID,
@@ -31,7 +36,6 @@ RETURNS TABLE (
     author_user_id UUID,
     author_name TEXT,
     author_avatar_url TEXT,
-    author_subscription_tier TEXT,
     company_id UUID,
     company_name TEXT,
     company_avatar_url TEXT,
@@ -45,8 +49,48 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    v_category post_category;
 BEGIN
+    -- Handle empty string as NULL
+    IF p_category IS NOT NULL AND p_category::text = '' THEN
+        v_category := NULL;
+    ELSE
+        v_category := p_category;
+    END IF;
+
     RETURN QUERY
+    WITH post_stats AS (
+        SELECT 
+            p2.id AS post_id,
+            COALESCE(pl.like_count, 0)::BIGINT AS like_count,
+            COALESCE(pc.comment_count, 0)::BIGINT AS comment_count,
+            COALESCE(pb.bookmark_count, 0)::BIGINT AS bookmark_count,
+            CASE WHEN ul.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_liked,
+            CASE WHEN ub.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bookmarked
+        FROM public.posts p2
+        LEFT JOIN (
+            SELECT pl2.post_id, COUNT(*) AS like_count 
+            FROM public.post_likes pl2
+            GROUP BY pl2.post_id
+        ) pl ON p2.id = pl.post_id
+        LEFT JOIN (
+            SELECT pc2.post_id, COUNT(*) AS comment_count 
+            FROM public.post_comments pc2
+            GROUP BY pc2.post_id
+        ) pc ON p2.id = pc.post_id
+        LEFT JOIN (
+            SELECT pb2.post_id, COUNT(*) AS bookmark_count 
+            FROM public.post_bookmarks pb2
+            GROUP BY pb2.post_id
+        ) pb ON p2.id = pb.post_id
+        LEFT JOIN public.post_likes ul 
+            ON p2.id = ul.post_id 
+            AND ul.user_id = p_user_id
+        LEFT JOIN public.post_bookmarks ub 
+            ON p2.id = ub.post_id 
+            AND ub.user_id = p_user_id
+    )
     SELECT 
         p.id AS post_id,
         p.content AS post_content,
@@ -57,45 +101,26 @@ BEGIN
         prof.id AS author_user_id,
         prof.name AS author_name,
         prof.avatar_url AS author_avatar_url,
-        prof.subscription_tier AS author_subscription_tier,
-        prof.company_id,
+        p.company_id,
         c.name AS company_name,
         c.avatar_url AS company_avatar_url,
-        COALESCE(likes.like_count, 0)::BIGINT AS like_count,
-        COALESCE(comments.comment_count, 0)::BIGINT AS comment_count,
-        COALESCE(bookmarks.bookmark_count, 0)::BIGINT AS bookmark_count,
-        CASE WHEN user_likes.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_liked_by_current_user,
-        CASE WHEN user_bookmarks.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_bookmarked_by_current_user,
+        ps.like_count,
+        ps.comment_count,
+        ps.bookmark_count,
+        ps.is_liked AS is_liked_by_current_user,
+        ps.is_bookmarked AS is_bookmarked_by_current_user,
         0 AS is_network_post
-    FROM 
-        public.posts p
-        JOIN public.profiles prof ON p.user_id = prof.id
-        LEFT JOIN public.companies c ON prof.company_id = c.id
-        LEFT JOIN (
-            SELECT post_id, COUNT(*) AS like_count 
-            FROM public.post_likes 
-            GROUP BY post_id
-        ) likes ON p.id = likes.post_id
-        LEFT JOIN (
-            SELECT post_id, COUNT(*) AS comment_count 
-            FROM public.post_comments 
-            GROUP BY post_id
-        ) comments ON p.id = comments.post_id
-        LEFT JOIN (
-            SELECT post_id, COUNT(*) AS bookmark_count 
-            FROM public.post_bookmarks 
-            GROUP BY post_id
-        ) bookmarks ON p.id = bookmarks.post_id
-        LEFT JOIN public.post_likes user_likes 
-            ON p.id = user_likes.post_id 
-            AND user_likes.user_id = p_user_id
-        LEFT JOIN public.post_bookmarks user_bookmarks 
-            ON p.id = user_bookmarks.post_id 
-            AND user_bookmarks.user_id = p_user_id
+    FROM public.posts p
+    JOIN public.profiles prof ON p.user_id = prof.id
+    LEFT JOIN public.companies c ON p.company_id = c.id
+    JOIN post_stats ps ON p.id = ps.post_id
     WHERE
-        (p_category IS NULL OR p.category = p_category)
+        (v_category IS NULL OR p.category = v_category)
     ORDER BY p.created_at DESC
     LIMIT p_limit
     OFFSET p_offset;
 END;
-$$; 
+$$;
+
+-- Grant permission to authenticated users to execute this function
+GRANT EXECUTE ON FUNCTION get_feed_posts(UUID, INTEGER, INTEGER, post_category) TO authenticated; 

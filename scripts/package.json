@@ -5,7 +5,8 @@
   "main": "setup-admin.js",
   "type": "module",
   "scripts": {
-    "setup:admin": "node setup-admin.js"
+    "setup:admin": "node setup-admin.js",
+    "reset:full": "node reset-and-setup.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0"

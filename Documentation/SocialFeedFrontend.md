@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The social feed feature in the CanDo Business Network application provides a platform for users and companies to share updates, interact through posts, comments, and likes, and flag inappropriate content. The implementation focuses on real-time updates, content organization through categories, and enhanced user interactions including bookmarking and sorted comment views.
+The social feed feature in the CanDo Business Network application provides a platform for users and companies to share updates, interact through posts, comments, and likes, and flag inappropriate content. The implementation focuses on real-time updates, content organization through categories, and enhanced user interactions including bookmarking, sorted comment views, rich text editing, post sharing, multiple image uploads with compression, and analytics tracking for Pro users.
 
 ## 2. Directory Structure
 
@@ -25,8 +25,12 @@ The social feed feature in the CanDo Business Network application provides a pla
     *   `BookmarkButton.tsx`: Post bookmarking functionality
     *   `FlagButton.tsx`: Content flagging button
     *   `FlagModal.tsx`: Modal for reporting content
+    *   `ShareButton.tsx`: Component for sharing posts via Web Share API or clipboard.
 *   **Layout Components:**
     *   `RightSidebar.tsx`: Supplementary feed content (trending, suggestions)
+*   **Common Components Used:**
+    *   `src/components/common/RichTextEditor.tsx`: TipTap based rich text editor for post content.
+    *   `src/components/messages/FileUpload.tsx`: Reusable file upload component for multiple images.
 
 ## 3. Component Details
 
@@ -70,10 +74,13 @@ The social feed feature in the CanDo Business Network application provides a pla
 ### 3.3. CreatePost.tsx
 *   **Purpose:** Form for creating new posts
 *   **Features:**
-    *   Rich text input
-    *   Media upload with preview
-    *   Company context selection
-    *   Draft saving
+    *   **"Post as" selector: Allows user to choose to post as their personal profile or as one of their owned companies.**
+    *   **Rich text input using `RichTextEditor` (TipTap based) supporting bold, italic, and lists.**
+    *   **Multiple image uploads (up to 5) using the `FileUpload` component.**
+    *   **Client-side image compression before upload.**
+    *   Preview and removal of selected images.
+    *   **Category selection for the post.**
+    *   **Analytics: Tracks `post_create` event for Pro users, including whether the post was made as a user or a company.**
 *   **Integration:**
     *   Uses Supabase Storage for media
     *   Real-time post addition to feed
@@ -94,11 +101,11 @@ The social feed feature in the CanDo Business Network application provides a pla
     *   Markdown support
 
 ### 3.5. Interaction Components
-*   **LikeButton.tsx:**
+*   **LikeButton.tsx:** (Assumed to be part of `PostItem.tsx` or `PostFeed.tsx` logic)
     *   Optimistic updates
     *   Like count display
-    *   Animation effects
-*   **BookmarkButton.tsx:**
+    *   **Analytics: Tracks `post_like` event for Pro users.**
+*   **BookmarkButton.tsx:** (Assumed to be part of `PostItem.tsx` or `PostFeed.tsx` logic)
     *   Post bookmarking functionality
     *   Optimistic updates
     *   Bookmark count display
@@ -106,25 +113,63 @@ The social feed feature in the CanDo Business Network application provides a pla
     *   Content reporting interface
     *   Category selection
     *   Report submission
+*   **ShareButton.tsx:**
+    *   **Purpose:** Allows users to share a post.
+    *   **Features:**
+        *   Uses Web Share API if available.
+        *   Fallback to copying post link to clipboard.
+        *   Toast notifications for success/failure.
+        *   **Analytics: Tracks `post_share` event for Pro users.**
+
+### 3.6. PostFeed.tsx & PostItem.tsx (Combined for Analytics Context)
+*   **PostItem/PostCard within PostFeed:**
+    *   **Analytics: Tracks `post_view` event for Pro users when a post becomes visible.**
+    *   **Analytics: Tracks `media_view` event for Pro users when an image is clicked or video is played.**
+    *   Displays multiple images in a grid if present.
+    *   Handles video display if media type is video.
+
+### 3.7. RichTextEditor.tsx (`src/components/common/RichTextEditor.tsx`)
+*   **Purpose:** Provides a rich text editing experience.
+*   **Technology:** Built using TipTap.
+*   **Features:**
+    *   Basic formatting toolbar: Bold, Italic, Bullet List, Ordered List.
+    *   Outputs HTML content.
+
+### 3.8. FileUpload.tsx (`src/components/messages/FileUpload.tsx`)
+*   **Purpose:** Reusable component for handling file selection and preview.
+*   **Features:**
+    *   Drag & drop interface.
+    *   Click to select files.
+    *   Support for maximum number of files and file size limits.
+    *   Displays selected file names/previews (if applicable).
+    *   Callback for when files change.
+    *   Used in `CreatePost.tsx` for image uploads.
 
 ## 4. Data Flow
 
 ### 4.1. Post Creation
-1.  User inputs content in `CreatePost.tsx`
-2.  Media files uploaded to Supabase Storage
-3.  Post created via `posts.ts` API functions
-4.  Real-time update triggers feed refresh
-5.  Optimistic UI updates show post immediately
+1.  User inputs content in `CreatePost.tsx` using `RichTextEditor`.
+2.  **User selects the posting entity (self or company) via the "Post as" selector.**
+3.  User uploads images using `FileUpload.tsx`; images are compressed client-side.
+4.  Media files uploaded to Supabase Storage.
+5.  Post created via API functions:
+    *   `user_id` is set to the authenticated user's ID.
+    *   `company_id` is set to the selected company's ID if posting as a company, otherwise it's `null`.
+6.  Real-time update triggers feed refresh
+7.  Optimistic UI updates show post immediately
+8.  **Analytics `post_create` event is tracked with details of the posting entity.**
 
 ### 4.2. Post Interaction
-1.  User interacts with `PostItem.tsx` components
-2.  Optimistic UI updates
-3.  Backend calls through API functions
-4.  Real-time updates via subscriptions
-5.  Error handling and rollback if needed
+1.  User interacts with `PostItem.tsx` components (e.g., likes, shares, views media).
+2.  **Analytics events (`post_view`, `post_like`, `post_share`, `media_view`) are triggered and sent if the user is Pro.**
+3.  Optimistic UI updates
+4.  Backend calls through API functions
+5.  Real-time updates via subscriptions
+6.  Error handling and rollback if needed
 
 ### 4.3. Comment Flow
 1.  User creates comment via `CommentForm.tsx`
+2.  **Analytics: Tracks `post_comment` event for Pro users.**
 2.  Comment added to thread in `CommentList.tsx`
 3.  Real-time updates to all viewers
 4.  Threaded structure maintained
@@ -147,6 +192,7 @@ The social feed feature in the CanDo Business Network application provides a pla
 ### 6.1. Loading
 *   Infinite scroll with intersection observer
 *   Skeleton loading states
+*   **Client-side image compression before upload to reduce upload time and storage.**
 *   Progressive image loading
 *   Debounced real-time updates
 
@@ -193,10 +239,10 @@ The social feed feature in the CanDo Business Network application provides a pla
 
 ## 10. Future Enhancements
 
-*   Rich text editor integration
-*   Enhanced media gallery
+*   Rich text editor integration **(Completed: TipTap basic integration)**
+*   Enhanced media gallery **(Partially done: Multiple image grid view)**
 *   Post scheduling
-*   Analytics integration
+*   Analytics integration **(Completed: Initial tracking for views, engagement, media for Pro users)**
 *   Enhanced content moderation
 
 ## 11. Post Categories
