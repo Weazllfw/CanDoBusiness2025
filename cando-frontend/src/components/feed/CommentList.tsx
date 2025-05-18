@@ -27,6 +27,31 @@ export default function CommentList({
 }: CommentListProps) {
   console.log('[CommentList] Rendered. typeof onReplySubmitted (prop received):', typeof onReplySubmitted, 'Value:', onReplySubmitted);
 
+  const [sortedComments, setSortedComments] = useState<ThreadedComment[]>(comments);
+  const [sortOption, setSortOption] = useState<'newest' | 'oldest' | 'most_liked'>('newest');
+
+  useEffect(() => {
+    const sortComments = () => {
+      const commentsCopy = [...comments];
+      switch (sortOption) {
+        case 'oldest':
+          commentsCopy.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          break;
+        case 'newest':
+          commentsCopy.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          break;
+        // Note: most_liked will be implemented when we add like counts to comments
+        case 'most_liked':
+          // For now, default to newest
+          commentsCopy.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          break;
+      }
+      setSortedComments(commentsCopy);
+    };
+
+    sortComments();
+  }, [comments, sortOption]);
+
   // const [comments, setComments] = useState<CommentWithAuthor[]>([]); // State moved to parent
   // const [isLoading, setIsLoading] = useState(false); // State moved to parent
   // const [error, setError] = useState<string | null>(null); // State moved to parent
@@ -56,8 +81,18 @@ export default function CommentList({
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-200">
-      {/* <h3 className="text-md font-semibold text-gray-800 mb-2">Comments</h3> */}
-      {/* Title is now part of the toggle button in PostCard or could be added here if needed */}
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-md font-semibold text-gray-800">Comments</h3>
+        <select
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value as 'newest' | 'oldest' | 'most_liked')}
+          className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="most_liked">Most Liked</option>
+        </select>
+      </div>
       
       {/* Form to add a new comment - REMOVED FROM HERE */}
       {/* 
@@ -79,7 +114,7 @@ export default function CommentList({
         // The RPC returns a flat list, sorted to represent the thread structure.
         // The depth property in CommentItem handles visual indentation.
         <div className="space-y-1 mt-2">
-          {renderComments(comments)}
+          {renderComments(sortedComments)}
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ import { fetchComments } from '../../lib/posts'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { User } from '@supabase/supabase-js'
 import FlagButton from './FlagButton'
+import BookmarkButton from './BookmarkButton'
 
 interface PostFeedProps {
   initialPosts: FeedPost[]
@@ -188,6 +189,12 @@ function PostCard({ post }: { post: FeedPost }) {
                         }
                     </span>
                 </button>
+                <BookmarkButton
+                  postId={post.post_id}
+                  userId={currentUser?.id}
+                  initialBookmarkCount={post.bookmark_count}
+                  isInitiallyBookmarked={post.is_bookmarked_by_current_user}
+                />
             </div>
             {currentUser && (
               <FlagButton 

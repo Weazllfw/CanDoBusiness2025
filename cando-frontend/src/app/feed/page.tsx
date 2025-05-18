@@ -8,23 +8,47 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs' // I
 import { type User } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase' // Ensure Database type is imported
 
-// Define the type for a single post based on the RPC return type
-export type FeedPost = {
-  post_id: string
-  post_content: string
-  post_media_url: string | null // Adjusted to allow null based on potential SQL output
-  post_media_type: string | null // Adjusted to allow null
-  post_created_at: string
-  author_user_id: string
-  author_name: string | null // Adjusted
-  author_avatar_url: string | null // Adjusted
-  author_subscription_tier: string | null // Adjusted
-  company_id: string | null // Adjusted
-  company_name: string | null // Adjusted
-  company_avatar_url: string | null // Adjusted
-  like_count: number
-  comment_count: number
-  is_liked_by_current_user: boolean
+export type PostCategory = 
+  | 'general'
+  | 'business_update'
+  | 'industry_news'
+  | 'job_opportunity'
+  | 'event'
+  | 'question'
+  | 'partnership'
+  | 'product_launch';
+
+export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
+  general: 'General',
+  business_update: 'Business Update',
+  industry_news: 'Industry News',
+  job_opportunity: 'Job Opportunity',
+  event: 'Event',
+  question: 'Question',
+  partnership: 'Partnership',
+  product_launch: 'Product Launch'
+};
+
+export interface FeedPost {
+  post_id: string;
+  post_content: string;
+  post_created_at: string;
+  post_category: PostCategory;
+  post_media_url: string | null;
+  post_media_type: string | null;
+  author_user_id: string;
+  author_name: string;
+  author_avatar_url: string;
+  author_subscription_tier: string | null;
+  company_id: string | null;
+  company_name: string | null;
+  company_avatar_url: string | null;
+  like_count: number;
+  comment_count: number;
+  bookmark_count: number;
+  is_liked_by_current_user: boolean;
+  is_bookmarked_by_current_user: boolean;
+  is_network_post: number;
 }
 
 const POSTS_PER_PAGE = 10;
@@ -38,6 +62,7 @@ export default function FeedPage() {
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [selectedCategory, setSelectedCategory] = useState<PostCategory | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -61,42 +86,44 @@ export default function FeedPage() {
 
   const fetchPosts = useCallback(async (page: number) => {
     if (!user) {
-        // This case should ideally not be hit if called correctly after user loads
-        console.warn("fetchPosts called without a user.") 
-        return;
+      console.warn("fetchPosts called without a user.");
+      return;
     }
 
-    setIsLoadingPosts(true)
-    setError(null)
+    setIsLoadingPosts(true);
+    setError(null);
 
     try {
       const { data, error: rpcError } = await supabase.rpc('get_feed_posts', {
-        p_current_user_id: user.id,
-        p_page_number: page,
-        p_page_size: POSTS_PER_PAGE,
-      })
+        p_user_id: user.id,
+        p_limit: POSTS_PER_PAGE,
+        p_offset: (page - 1) * POSTS_PER_PAGE,
+        p_category: selectedCategory
+      });
 
-      console.log('RPC Data for Posts from FeedPage.tsx:', data); // Debug log
+      if (rpcError) throw rpcError;
 
-      if (rpcError) {
-        throw rpcError
-      }
-      
-      // Ensure data is not null and is an array before processing
       const newPosts = (data || []) as FeedPost[];
-
-      setPosts((prevPosts) => page === 1 ? newPosts : [...prevPosts, ...newPosts])
-      setHasMore(newPosts.length === POSTS_PER_PAGE)
-      setCurrentPage(page)
-
+      setPosts((prevPosts) => page === 1 ? newPosts : [...prevPosts, ...newPosts]);
+      setHasMore(newPosts.length === POSTS_PER_PAGE);
+      setCurrentPage(page);
     } catch (e: any) {
-      console.error("Error fetching posts:", e)
-      setError(e.message || "Failed to fetch posts.")
-      setHasMore(false) // Stop trying to load more if an error occurs
+      console.error("Error fetching posts:", e);
+      setError(e.message || "Failed to fetch posts.");
+      setHasMore(false);
     } finally {
-      setIsLoadingPosts(false)
+      setIsLoadingPosts(false);
     }
-  }, [user]);
+  }, [user, selectedCategory]);
+
+  // Reset and refetch when category changes
+  useEffect(() => {
+    if (user && !isUserLoading) {
+      setPosts([]);
+      setCurrentPage(1);
+      fetchPosts(1);
+    }
+  }, [selectedCategory, user, isUserLoading, fetchPosts]);
 
   useEffect(() => {
     // Fetch initial posts only when user is loaded and not null
@@ -157,25 +184,39 @@ export default function FeedPage() {
   return (
     <div className="flex gap-8 max-w-7xl mx-auto py-8">
       <div className="flex-1">
-        {/* CreatePost is now guaranteed to have a user object if this part of code is reached */}
+        <div className="mb-6">
+          <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+            Filter by Category
+          </label>
+          <select
+            id="category"
+            value={selectedCategory || ''}
+            onChange={(e) => setSelectedCategory(e.target.value as PostCategory | null)}
+            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+          >
+            <option value="">All Categories</option>
+            {Object.entries(POST_CATEGORY_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <CreatePost companyId="" onPostCreated={handlePostCreated} />
         
         {isLoadingPosts && posts.length === 0 && <div className="text-center py-10">Loading posts...</div>}
         
-        {/* Display specific post-related error only if no posts are loaded and not already showing a general error */}
         {error && posts.length === 0 && error !== "Please log in to see the feed." && 
-            <div className="text-red-500 text-center py-4">Error fetching posts: {error}</div>
+          <div className="text-red-500 text-center py-4">Error fetching posts: {error}</div>
         }
         
         <PostFeed initialPosts={posts} onLoadMore={handleLoadMore} hasMore={hasMore} />
+        
         {isLoadingPosts && posts.length > 0 && <div className="text-center py-4">Loading more posts...</div>}
         {!isLoadingPosts && !hasMore && posts.length > 0 && <div className="text-center py-4 text-gray-500">No more posts to load.</div>}
         {!isLoadingPosts && !hasMore && posts.length === 0 && !error && 
-            <div className="text-center py-4 text-gray-500">No posts yet. Be the first to create one!</div>
-        }
-         {/* Fallback for when posts.length is 0, no error, but user is logged in, and not loading */}
-         {!isLoadingPosts && posts.length === 0 && !error && hasMore && 
-            <div className="text-center py-4 text-gray-500">No posts found in your network yet. Explore and connect!</div>
+          <div className="text-center py-4 text-gray-500">No posts found in this category.</div>
         }
       </div>
       <RightSidebar />

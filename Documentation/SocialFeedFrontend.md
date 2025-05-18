@@ -2,25 +2,27 @@
 
 ## 1. Overview
 
-The social feed feature in the CanDo Business Network application provides a platform for users and companies to share updates, interact through posts, comments, and likes, and flag inappropriate content. The implementation focuses on real-time updates and smooth user interactions.
+The social feed feature in the CanDo Business Network application provides a platform for users and companies to share updates, interact through posts, comments, and likes, and flag inappropriate content. The implementation focuses on real-time updates, content organization through categories, and enhanced user interactions including bookmarking and sorted comment views.
 
 ## 2. Directory Structure
 
 ### 2.1. Pages
-*   `src/app/feed/page.tsx`: Main feed page container
+*   `src/app/feed/page.tsx`: Main feed page container with category filtering
 *   `src/app/feed/[postId]/page.tsx`: Individual post view with expanded comments
+*   `src/app/bookmarks/page.tsx`: User's bookmarked posts view
 
 ### 2.2. Components (`src/components/feed/`)
 *   **Core Feed Components:**
-    *   `PostFeed.tsx`: Main feed container with infinite scroll
+    *   `PostFeed.tsx`: Main feed container with infinite scroll and category filtering
     *   `PostItem.tsx`: Individual post display with interactions
-    *   `CreatePost.tsx`: Post creation form with media upload
+    *   `CreatePost.tsx`: Post creation form with media upload and category selection
 *   **Comment Components:**
-    *   `CommentList.tsx`: Threaded comments display
+    *   `CommentList.tsx`: Threaded comments display with sorting options
     *   `CommentItem.tsx`: Individual comment with replies
     *   `CommentForm.tsx`: Comment creation interface
 *   **Interaction Components:**
     *   `LikeButton.tsx`: Post/comment like functionality
+    *   `BookmarkButton.tsx`: Post bookmarking functionality
     *   `FlagButton.tsx`: Content flagging button
     *   `FlagModal.tsx`: Modal for reporting content
 *   **Layout Components:**
@@ -34,6 +36,7 @@ The social feed feature in the CanDo Business Network application provides a pla
     *   Infinite scroll implementation
     *   Real-time updates via Supabase subscriptions
     *   Post sorting and filtering
+    *   Category-based filtering
 *   **Key Props:**
     ```typescript
     interface PostFeedProps {
@@ -41,6 +44,7 @@ The social feed feature in the CanDo Business Network application provides a pla
       userId?: string;
       companyId?: string;
       filter?: 'all' | 'following' | 'company';
+      category?: PostCategory;
     }
     ```
 
@@ -49,14 +53,17 @@ The social feed feature in the CanDo Business Network application provides a pla
 *   **Features:**
     *   Post content and media display
     *   Like/unlike functionality
+    *   Bookmark/unbookmark functionality
     *   Comment thread preview
     *   Content flagging
+    *   Category display
 *   **Key Props:**
     ```typescript
     interface PostItemProps {
       post: Post;
       showActions?: boolean;
       isExpanded?: boolean;
+      category: PostCategory;
     }
     ```
 
@@ -74,6 +81,7 @@ The social feed feature in the CanDo Business Network application provides a pla
 ### 3.4. Comment Components
 *   **CommentList.tsx:**
     *   Threaded comment display
+    *   Sorting options (newest, oldest, most liked)
     *   Pagination/load more
     *   Real-time updates
 *   **CommentItem.tsx:**
@@ -90,6 +98,10 @@ The social feed feature in the CanDo Business Network application provides a pla
     *   Optimistic updates
     *   Like count display
     *   Animation effects
+*   **BookmarkButton.tsx:**
+    *   Post bookmarking functionality
+    *   Optimistic updates
+    *   Bookmark count display
 *   **FlagButton.tsx & FlagModal.tsx:**
     *   Content reporting interface
     *   Category selection
@@ -185,4 +197,53 @@ The social feed feature in the CanDo Business Network application provides a pla
 *   Enhanced media gallery
 *   Post scheduling
 *   Analytics integration
-*   Enhanced content moderation 
+*   Enhanced content moderation
+
+## 11. Post Categories
+
+### 11.1. Available Categories
+*   General
+*   Business Update
+*   Industry News
+*   Job Opportunity
+*   Event
+*   Question
+*   Partnership
+*   Product Launch
+
+### 11.2. Category Implementation
+*   Database enum type for categories
+*   Category selection in post creation
+*   Category-based filtering in feed
+*   Visual indicators for post categories
+*   Category-specific styling and icons
+
+## 12. Bookmarking System
+
+### 12.1. Features
+*   Post bookmarking/unbookmarking
+*   Bookmark counts
+*   Dedicated bookmarks page
+*   Real-time bookmark status updates
+*   RLS-secured bookmark operations
+
+### 12.2. Implementation
+*   Database table: `post_bookmarks`
+*   Toggle bookmark function
+*   Optimistic UI updates
+*   Bookmark count aggregation
+*   Filtered bookmark views
+
+## 13. Comment Sorting
+
+### 13.1. Available Sort Options
+*   Newest First
+*   Oldest First
+*   Most Liked
+
+### 13.2. Implementation
+*   Client-side sorting
+*   Thread structure preservation
+*   Sort preference persistence
+*   Real-time sort updates
+*   Performance optimizations for large comment threads 

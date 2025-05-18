@@ -56,6 +56,9 @@ export default function MainNav({ userId }: { userId: string }) {
               <NavLink href="/network" isActive={pathname === '/network'}>
                 Network
               </NavLink>
+              <NavLink href="/bookmarks" isActive={pathname === '/bookmarks'}>
+                Bookmarks
+              </NavLink>
               <NavLink href="/opportunities" isActive={pathname === '/opportunities'}>
                 Opportunities
               </NavLink>
