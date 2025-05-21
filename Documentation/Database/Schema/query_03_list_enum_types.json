@@ -1,0 +1,38 @@
+[
+  {
+    "enum_name": "admin_action_target_type_enum",
+    "enum_values": "{post,comment,profile,flag}"
+  },
+  {
+    "enum_name": "admin_action_type_enum",
+    "enum_values": "{content_removed_post,content_removed_comment,user_warned,user_banned_temporarily,user_banned_permanently,flag_status_changed,user_unbanned,user_warning_cleared}"
+  },
+  {
+    "enum_name": "company_role_enum",
+    "enum_values": "{OWNER,ADMIN,MEMBER,VIEWER}"
+  },
+  {
+    "enum_name": "connection_status_enum",
+    "enum_values": "{PENDING,ACCEPTED,DECLINED,BLOCKED}"
+  },
+  {
+    "enum_name": "content_status_enum",
+    "enum_values": "{visible,removed_by_admin}"
+  },
+  {
+    "enum_name": "flag_status_enum",
+    "enum_values": "{pending_review,resolved_no_action,resolved_content_removed,resolved_user_warned,resolved_user_banned}"
+  },
+  {
+    "enum_name": "notification_type_enum",
+    "enum_values": "{system_alert,content_moderation,new_message_summary,connection_request,rfq_update,default}"
+  },
+  {
+    "enum_name": "post_category",
+    "enum_values": "{general,business_update,industry_news,job_opportunity,event,question,partnership,product_launch}"
+  },
+  {
+    "enum_name": "profile_status_enum",
+    "enum_values": "{active,warned,banned_temporarily,banned_permanently}"
+  }
+]

@@ -434,53 +434,45 @@ This document provides a summary of the database migrations applied to the proje
 
 ## `20250520000004_create_user_connections_table.sql`
 
-**Purpose:** Implements user-to-user connections. Idempotent.
+**Purpose:** Implements an early version of user-to-user connections. Idempotent. **(Superseded by `20250602000000_create_user_connections_table.sql`)**
 
 **Key Changes:**
-*   Creates `public.user_connections` table:
-    *   Tracks connection requests and status
-    *   Prevents self-connections
-    *   Ensures unique connections
-*   Implements comprehensive RLS policies:
-    *   Connection participants can read
-    *   Requesters can create/cancel
-    *   Addressees can accept/decline
-    *   Both parties can block/delete
-*   Adds performance indexes
-*   Reuses `handle_updated_at` trigger
+*   Creates `public.user_connections` table (schema may differ from the current version).
+*   Tracks connection requests and status.
+*   Prevents self-connections.
+*   Ensures unique connections.
+*   Implements comprehensive RLS policies.
+*   Adds performance indexes.
+*   Original version mentioned reusing `handle_updated_at` trigger (current version does not use `updated_at`).
 
 ---
 
 ## `20250520000005_create_user_company_follows_table.sql`
 
-**Purpose:** Implements company following functionality. Idempotent.
+**Purpose:** Implements an early version of company following functionality. Idempotent. **(Superseded by `20250610000000_create_user_company_follows.sql`)**
 
 **Key Changes:**
-*   Creates `public.user_company_follows` table:
-    *   Composite PK: `(user_id, company_id)`
-    *   Tracks follow timestamps
-*   Implements RLS policies:
-    *   Public read access
-    *   Users can follow/unfollow
-*   Adds performance indexes
+*   Creates `public.user_company_follows` table (schema may differ from the current version).
+*   Composite PK: `(user_id, company_id)`.
+*   Tracks follow timestamps.
+*   Implements RLS policies.
+*   Public read access.
+*   Users can follow/unfollow.
+*   Adds performance indexes.
 
 ---
 
 ## `20250520000006_create_company_to_company_connections_table.sql`
 
-**Purpose:** Implements company-to-company relationships (follows, partnerships). Idempotent.
+**Purpose:** Implements an early version of company-to-company relationships (follows, partnerships). Idempotent. **(Superseded by `20250602000005_create_company_connections_table.sql` and `20250602000006_create_company_connection_rpcs.sql`)**
 
 **Key Changes:**
-*   Creates `public.company_to_company_connections` table:
-    *   Tracks source and target companies
-    *   Supports multiple connection types (FOLLOWING, PARTNERSHIP_REQUESTED, etc.)
-    *   Prevents self-connections and duplicates
-*   Implements RLS policies:
-    *   Public read access
-    *   Source company owner can initiate connections
-    *   Target company owner can respond to partnerships
-    *   Either owner can manage terminal states
-*   Adds performance indexes and constraints
+*   Creates `public.company_to_company_connections` table.
+*   Tracks source and target companies.
+*   Supports multiple connection types (FOLLOWING, PARTNERSHIP_REQUESTED, etc.).
+*   Prevents self-connections and duplicates.
+*   Implements RLS policies.
+*   Adds performance indexes and constraints.
 
 ---
 
@@ -712,3 +704,134 @@ This document provides a summary of the database migrations applied to the proje
     *   `SECURITY DEFINER` function.
     *   Checks if the `p_user_id` has an active 'PRO' subscription. If not, returns no data.
     *   Returns a table with aggregated event counts (`event_type`, `event_count`, `first_occurrence`, `last_occurrence`) for the specified user and date range.
+
+---
+
+## `20250602000000_create_user_connections_table.sql`
+
+**Purpose:** Establishes the current user-to-user connection system, replacing earlier versions. Aligns with `ConnectionSystem.md`. Idempotent.
+
+**Key Changes:**
+*   Creates `public.connection_status_enum` ('PENDING', 'ACCEPTED', 'DECLINED', 'BLOCKED').
+*   Creates `public.user_connections` table:
+    *   Fields: `id`, `requester_id` (FK to `profiles.id`), `addressee_id` (FK to `profiles.id`), `status` (using `connection_status_enum`), `notes` (TEXT), `requested_at`, `responded_at`.
+    *   No `updated_at` column.
+    *   Constraint `user_connections_check_different_users` (requester_id <> addressee_id).
+    *   Unique constraint `user_connections_unique_pair` on `(requester_id, addressee_id)`.
+*   Adds indexes on `requester_id`, `addressee_id`, and `status`.
+*   Enables RLS and defines policies:
+    *   "Users can view their own connection records".
+    *   "Users can send connection requests".
+    *   "Users can cancel their sent pending requests".
+    *   "Addressees can respond to pending connection requests".
+    *   "Users can remove an accepted connection".
+*   Adds comments on table and columns.
+
+---
+
+## `20250602000001_create_user_connection_rpcs.sql`
+
+**Purpose:** Creates RPC functions for managing the current user-to-user connection system. Aligns with `ConnectionSystem.md`. Idempotent.
+
+**Key Changes:**
+*   Creates helper function `internal.get_current_user_id()`.
+*   Creates `public.send_user_connection_request(p_addressee_id UUID, p_message TEXT DEFAULT NULL)`: Sends a request; handles existing connections and unique violations by raising appropriate exceptions.
+*   Creates `public.respond_user_connection_request(p_request_id UUID, p_response TEXT)`: Allows addressee to 'accept' or 'decline'.
+*   Creates `public.remove_user_connection(p_other_user_id UUID)`: Deletes an 'ACCEPTED' connection.
+*   Creates `public.get_user_connection_status_with(p_other_user_id UUID)`: Returns detailed status like 'PENDING_SENT', 'ACCEPTED', 'DECLINED_BY_THEM', etc.
+*   Creates `public.get_pending_user_connection_requests()`: Returns incoming pending requests for the current user.
+*   Creates `public.get_sent_user_connection_requests()`: Returns outgoing pending requests for the current user.
+*   Creates `public.get_user_network(p_target_user_id UUID)`: Returns profile details of accepted connections for a user.
+*   Adds comments on all created functions.
+
+---
+
+## `20250602000004_create_company_users_table.sql`
+
+**Purpose:** Establishes the system for linking users to companies with specific roles, crucial for company-level permissions. Idempotent.
+
+**Key Changes:**
+*   Creates `public.company_role_enum` ('OWNER', 'ADMIN', 'MEMBER', 'VIEWER').
+*   Creates `public.company_users` table:
+    *   Fields: `id`, `company_id` (FK to `companies.id`), `user_id` (FK to `profiles.id`), `role` (using `company_role_enum`), `created_at`, `updated_at`.
+    *   Unique constraint `company_users_unique_user_company` on `(user_id, company_id)`.
+*   Creates trigger function `internal.set_updated_at_on_company_users()` and associated trigger.
+*   Adds indexes on `company_id`, `user_id`, and `role`.
+*   Enables RLS and defines policies for viewing memberships, adding users, updating/removing users, and self-removal (owners cannot self-remove).
+*   Creates trigger function `internal.validate_company_user_role_update()` to prevent invalid role changes (e.g., demoting last owner).
+*   Creates trigger function `internal.assign_company_owner_role()` (on `companies` table AFTER INSERT) to automatically grant 'OWNER' role in `company_users` to the company creator.
+*   Adds comments on table and columns.
+
+---
+
+## `20250602000005_create_company_connections_table.sql`
+
+**Purpose:** Establishes the current company-to-company connection system, replacing earlier versions. Aligns with `ConnectionSystem.md`. Idempotent.
+
+**Key Changes:**
+*   Uses the existing `public.connection_status_enum`.
+*   Creates `public.company_connections` table:
+    *   Fields: `id`, `requester_company_id` (FK to `companies.id`), `addressee_company_id` (FK to `companies.id`), `status`, `requested_by_user_id` (FK to `profiles.id`), `requested_at`, `responded_at`.
+    *   Constraint `company_connections_check_different_companies`.
+    *   Unique constraint `company_connections_unique_pair` on `(requester_company_id, addressee_company_id)`.
+*   Adds indexes on `requester_company_id`, `addressee_company_id`, `status`, `requested_by_user_id`.
+*   Enables RLS and defines policies for viewing and managing company connections, requiring specific company roles ('ADMIN', 'OWNER') via `company_users` table. Policies cover:
+    *   Public viewing of 'ACCEPTED' connections.
+    *   Admins viewing their company's records.
+    *   Admins sending requests.
+    *   Admins canceling sent pending requests.
+    *   Admins responding to pending requests.
+    *   Admins removing an accepted connection.
+*   Adds comments on table and columns.
+
+---
+
+## `20250602000006_create_company_connection_rpcs.sql`
+
+**Purpose:** Creates RPC functions for managing the current company-to-company connection system. Aligns with `ConnectionSystem.md`. Idempotent.
+
+**Key Changes:**
+*   Creates helper function `internal.is_company_admin(p_user_id UUID, p_company_id UUID)` using `company_users` table.
+*   Creates `public.send_company_connection_request(p_acting_company_id UUID, p_target_company_id UUID)`: Requires acting user to be admin of acting company; checks company verification status.
+*   Creates `public.respond_company_connection_request(p_request_id UUID, p_response TEXT)`: Requires acting user to be admin of addressee company.
+*   Creates `public.remove_company_connection(p_acting_company_id UUID, p_other_company_id UUID)`: Requires acting user to be admin of acting company.
+*   Creates `public.get_company_connection_status_with(p_acting_company_id UUID, p_other_company_id UUID)`: Provides detailed status for admins of acting company.
+*   Creates `public.get_pending_company_connection_requests(p_for_company_id UUID)`: For admins of the company.
+*   Creates `public.get_sent_company_connection_requests(p_from_company_id UUID)`: For admins of the company.
+*   Creates `public.get_company_network_count(p_company_id UUID)`: Publicly visible count.
+*   Creates `public.get_company_network_details(p_target_company_id UUID)`: Detailed company info for admins of the target company.
+*   Adds comments on all created functions.
+
+---
+
+## `20250603000000_create_get_company_connections_rpc.sql`
+
+**Purpose:** Creates a function to retrieve companies connected to a given company. **Note: This RPC appears to use a schema (`company1_id`, `company2_id`, `status = 'CONNECTED'`, `companies_view`) that may differ from the primary `company_connections` table structure established in `20250602000005...`. Its current utility alongside newer RPCs like `get_company_network_details` should be reviewed.** Idempotent.
+
+**Key Changes:**
+*   Creates `get_company_connections(p_company_id UUID)` function.
+*   Returns `TABLE (connected_company_id UUID, name TEXT, avatar_url TEXT, industry TEXT, connected_at TIMESTAMPTZ)`.
+*   Joins `company_connections` with `companies_view`.
+*   Filters for `status = 'CONNECTED'` and where `p_company_id` is `company1_id` or `company2_id`.
+
+---
+
+## `20250610000000_create_user_company_follows.sql`
+
+**Purpose:** Implements the current user-company follow functionality, replacing earlier versions. Idempotent.
+
+**Key Changes:**
+*   Creates `public.user_company_follows` table:
+    *   Fields: `id`, `user_id` (FK to `public.users(id)`), `company_id` (FK to `public.companies(id)`), `created_at`.
+    *   Unique constraint on `(user_id, company_id)`.
+*   Enables RLS and defines policies:
+    *   "Users can view their follows".
+    *   "Users can follow companies" (insert).
+    *   "Users can unfollow companies" (delete).
+*   Creates RPC functions (SECURITY DEFINER):
+    *   `public.follow_company(p_company_id UUID)`: Inserts follow, handles conflicts.
+    *   `public.unfollow_company(p_company_id UUID)`: Deletes follow.
+    *   `public.get_company_follow_status(p_company_id UUID)`: Returns boolean.
+    *   `public.get_followed_companies()`: Returns `SETOF public.user_company_follows` for the current user.
+
+---

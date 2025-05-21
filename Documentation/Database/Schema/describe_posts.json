@@ -1,0 +1,42 @@
+[
+  {
+    "table_name": "posts",
+    "column_name": "user_id",
+    "column_comment": "The user who authored the post."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "company_id",
+    "column_comment": "The company on whose behalf the post is made (if applicable)."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "rfq_id",
+    "column_comment": "The RFQ related to the post (if applicable)."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "content",
+    "column_comment": "The main textual content of the post."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "author_subscription_tier",
+    "column_comment": "Subscription tier of the author at the time of posting, for feed prioritization."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "status",
+    "column_comment": "Moderation status of the post."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "created_at",
+    "column_comment": "Timestamp of post creation."
+  },
+  {
+    "table_name": "posts",
+    "column_name": "updated_at",
+    "column_comment": "Timestamp of last post update."
+  }
+]

@@ -1,0 +1,7 @@
+[
+    {
+      "table_name": "company_users",
+      "column_name": "role",
+      "column_comment": "Role of the user within the company."
+    }
+  ]

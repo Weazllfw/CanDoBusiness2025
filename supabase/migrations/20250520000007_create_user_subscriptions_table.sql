@@ -20,8 +20,8 @@ CREATE TABLE public.user_subscriptions (
 COMMENT ON TABLE public.user_subscriptions IS 'Tracks user subscription tiers and Stripe information.';
 COMMENT ON COLUMN public.user_subscriptions.user_id IS 'The user associated with this subscription. Each user has one primary subscription record.';
 COMMENT ON COLUMN public.user_subscriptions.tier IS 'Subscription tier (e.g., ''REGULAR'', ''PREMIUM'', ''PRO'').';
-COMMENT ON COLUMN public.user_subscriptions.stripe_subscription_id IS 'Stripe''s unique ID for the subscription. NULL for non-Stripe managed tiers.';
-COMMENT ON COLUMN public.user_subscriptions.stripe_customer_id IS 'Stripe''s unique ID for the customer. NULL for non-Stripe managed tiers.';
+COMMENT ON COLUMN public.user_subscriptions.stripe_subscription_id IS 'Stripe''''s unique ID for the subscription. NULL for non-Stripe managed tiers.';
+COMMENT ON COLUMN public.user_subscriptions.stripe_customer_id IS 'Stripe''''s unique ID for the customer. NULL for non-Stripe managed tiers.';
 COMMENT ON COLUMN public.user_subscriptions.status IS 'Current status (e.g., ''active'', ''canceled'', ''past_due'', ''incomplete'', ''free_tier'').';
 COMMENT ON COLUMN public.user_subscriptions.current_period_start IS 'Start date of the current billing cycle from Stripe.';
 COMMENT ON COLUMN public.user_subscriptions.current_period_end IS 'End date of the current billing cycle from Stripe.';

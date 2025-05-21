@@ -1,0 +1,92 @@
+[
+  {
+    "table_name": "companies",
+    "column_name": "description",
+    "column_comment": "A brief description of the company."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "website",
+    "column_comment": "Official website URL for the company."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "industry",
+    "column_comment": "The industry sector the company operates in."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tier2_submission_date",
+    "column_comment": "Timestamp when Tier 2 verification was initially submitted by the user."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tier2_document_type",
+    "column_comment": "The type of document submitted for Tier 2 review (e.g., 'articles_of_incorporation', 'photo_id')."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tier2_document_filename",
+    "column_comment": "Original filename of the document uploaded for Tier 2 verification."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tier2_document_storage_path",
+    "column_comment": "Storage path of the document currently under review for Tier 2."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tier2_document_uploaded_at",
+    "column_comment": "Timestamp when the Tier 2 document was uploaded for review."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "banner_url",
+    "column_comment": "URL for the company banner image."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "year_founded",
+    "column_comment": "The year the company was founded."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "business_type",
+    "column_comment": "Type of business (e.g., LLC, Corporation, Sole Proprietorship)."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "employee_count",
+    "column_comment": "Approximate number of employees (e.g., \"1-10\", \"11-50\")."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "revenue_range",
+    "column_comment": "Approximate annual revenue range (e.g., \"$0-$1M\", \"$1M-$5M\")."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "social_media_links",
+    "column_comment": "JSONB object storing social media profile URLs (e.g., {\"linkedin\": \"url\", \"twitter\": \"url\"})."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "certifications",
+    "column_comment": "Array of certifications held by the company."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "tags",
+    "column_comment": "Array of tags or keywords associated with the company."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "country",
+    "column_comment": "Country where the company is based, defaults to Canada."
+  },
+  {
+    "table_name": "companies",
+    "column_name": "updated_at",
+    "column_comment": "Timestamp of the last update to the company record."
+  }
+]

@@ -1,0 +1,74 @@
+{
+  "column_details": [
+    {
+      "table_name": "user_company_follows",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "user_company_follows",
+      "column_name": "company_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "user_company_follows",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "user_company_follows",
+      "constraint_name": "user_company_follows_company_id_fkey",
+      "constraint_type": "f",
+      "constraint_definition": "FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE",
+      "foreign_table_name": "companies",
+      "local_columns": ["company_id"],
+      "foreign_columns": ["id"]
+    },
+    {
+      "table_name": "user_company_follows",
+      "constraint_name": "user_company_follows_user_id_fkey",
+      "constraint_type": "f",
+      "constraint_definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+      "foreign_table_name": "auth.users",
+      "local_columns": ["user_id"],
+      "foreign_columns": ["id"]
+    },
+    {
+      "table_name": "user_company_follows",
+      "constraint_name": "user_company_follows_pkey",
+      "constraint_type": "p",
+      "constraint_definition": "PRIMARY KEY (user_id, company_id)",
+      "foreign_table_name": "-",
+      "local_columns": ["user_id", "company_id"],
+      "foreign_columns": null
+    }
+  ],
+  "column_comments": [
+    {
+      "table_name": "user_company_follows",
+      "column_name": "user_id",
+      "column_comment": "The user who is following the company."
+    },
+    {
+      "table_name": "user_company_follows",
+      "column_name": "company_id",
+      "column_comment": "The company being followed by the user."
+    },
+    {
+      "table_name": "user_company_follows",
+      "column_name": "created_at",
+      "column_comment": "Timestamp of when the follow action occurred."
+    }
+  ]
+}

@@ -20,12 +20,12 @@ DROP TABLE IF EXISTS public.post_flags CASCADE;
 CREATE TABLE public.post_flags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, -- User who flagged
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE, -- User who flagged
     reason TEXT NULL, -- Optional reason provided by the user
     status public.flag_status_enum NOT NULL DEFAULT 'pending_review',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NULL,
-    reviewed_by UUID NULL REFERENCES auth.users(id) ON DELETE SET NULL, -- Admin who reviewed
+    reviewed_by UUID NULL REFERENCES public.profiles(id) ON DELETE SET NULL, -- Admin who reviewed
     reviewed_at TIMESTAMPTZ NULL,
     admin_notes TEXT NULL, -- Notes by admin during review
     CONSTRAINT unique_post_flag_by_user UNIQUE (post_id, user_id) -- A user can only flag a specific post once
@@ -50,12 +50,12 @@ DROP TABLE IF EXISTS public.comment_flags CASCADE;
 CREATE TABLE public.comment_flags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     comment_id UUID NOT NULL REFERENCES public.post_comments(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, -- User who flagged
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE, -- User who flagged
     reason TEXT NULL, -- Optional reason provided by the user
     status public.flag_status_enum NOT NULL DEFAULT 'pending_review',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NULL,
-    reviewed_by UUID NULL REFERENCES auth.users(id) ON DELETE SET NULL, -- Admin who reviewed
+    reviewed_by UUID NULL REFERENCES public.profiles(id) ON DELETE SET NULL, -- Admin who reviewed
     reviewed_at TIMESTAMPTZ NULL,
     admin_notes TEXT NULL, -- Notes by admin during review
     CONSTRAINT unique_comment_flag_by_user UNIQUE (comment_id, user_id) -- A user can only flag a specific comment once

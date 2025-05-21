@@ -60,15 +60,19 @@ const PeopleYouMayKnow: React.FC<PeopleYouMayKnowProps> = () => {
   useEffect(() => {
     if (currentUser?.id) {
       fetchSuggestions(currentUser.id);
-    } else {
-      if (!currentUser && suggestions.length === 0) setIsLoading(false); 
+    } else if (!currentUser) {
+      if (isLoading) setIsLoading(false); 
     }
-  }, [currentUser, fetchSuggestions, suggestions.length]);
+  }, [currentUser, fetchSuggestions]);
 
-  const handleConnect = async (personId: string): Promise<boolean> => {
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    return true; 
-  };
+  const handleConnectionStatusChange = useCallback((receivedNewStatus: string, receivedTargetId: string) => {
+    console.log(`[PYMK] Connection status for ${receivedTargetId} changed to ${receivedNewStatus}. Suppressing list refresh for now.`);
+    // if (currentUser?.id) {
+      // WORKAROUND: Temporarily disable fetching suggestions to stop potential infinite loop.
+      // This means the PYMK list won't auto-update on status change from here.
+      // fetchSuggestions(currentUser.id);
+    // }
+  }, [currentUser?.id, fetchSuggestions]);
   
   if (isLoading) {
     return (
@@ -93,7 +97,12 @@ const PeopleYouMayKnow: React.FC<PeopleYouMayKnowProps> = () => {
         {suggestions.length > 0 ? (
           <div className="space-y-1">
             {suggestions.map((suggestion) => (
-              <SuggestionCard key={suggestion.id} suggestion={suggestion} onConnect={handleConnect} />
+              <SuggestionCard 
+                key={suggestion.id} 
+                suggestion={suggestion} 
+                currentUser={currentUser}
+                onConnectionStatusChange={handleConnectionStatusChange}
+              />
             ))}
           </div>
         ) : (

@@ -1,0 +1,71 @@
+[
+  {
+    "table_name": "admin_actions_log"
+  },
+  {
+    "table_name": "analytics_events"
+  },
+  {
+    "table_name": "comment_flags"
+  },
+  {
+    "table_name": "companies"
+  },
+  {
+    "table_name": "company_connections"
+  },
+  {
+    "table_name": "company_to_company_connections"
+  },
+  {
+    "table_name": "company_users"
+  },
+  {
+    "table_name": "messages"
+  },
+  {
+    "table_name": "post_bookmarks"
+  },
+  {
+    "table_name": "post_comments"
+  },
+  {
+    "table_name": "post_flags"
+  },
+  {
+    "table_name": "post_likes"
+  },
+  {
+    "table_name": "posts"
+  },
+  {
+    "table_name": "profiles"
+  },
+  {
+    "table_name": "quote_revisions"
+  },
+  {
+    "table_name": "quotes"
+  },
+  {
+    "table_name": "rfq_invitations"
+  },
+  {
+    "table_name": "rfq_templates"
+  },
+  {
+    "table_name": "rfqs"
+  },
+  {
+    "table_name": "user_company_follows"
+  },
+  {
+    "table_name": "user_connections"
+  },
+  {
+    "table_name": "user_notifications"
+  },
+  {
+    "table_name": "user_subscriptions"
+  }
+]

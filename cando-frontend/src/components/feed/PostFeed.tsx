@@ -15,6 +15,7 @@ import type { User } from '@supabase/supabase-js'
 import FlagButton from './FlagButton'
 import BookmarkButton from './BookmarkButton'
 import ShareButton from './ShareButton'
+import { CheckBadgeIcon, ShieldCheckIcon, UserCircleIcon } from '@heroicons/react/24/solid'
 
 interface PostFeedProps {
   initialPosts: FeedPost[]
@@ -109,8 +110,18 @@ function PostCard({ post }: { post: FeedPost }) {
     <article className="bg-white rounded-lg shadow p-6 mb-4">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          {/* Author/Company Avatar Logic */}
-          {post.company_id && post.company_avatar_url ? (
+          {/* Avatar Logic considering acting_company > company > author */}
+          {post.acting_company_logo_url ? (
+            <Link href={`/company/${post.acting_company_id}`} passHref>
+              <Image 
+                src={post.acting_company_logo_url} 
+                alt={post.acting_company_name || 'Company'} 
+                width={40} 
+                height={40} 
+                className="rounded-full cursor-pointer"
+              />
+            </Link>
+          ) : post.company_avatar_url && post.company_id ? (
             <Link href={`/company/${post.company_id}`} passHref>
               <Image 
                 src={post.company_avatar_url} 
@@ -121,45 +132,66 @@ function PostCard({ post }: { post: FeedPost }) {
               />
             </Link>
           ) : post.author_avatar_url ? (
-            // TODO: Add Link to user profile if/when available
-            <Image 
-              src={post.author_avatar_url} 
-              alt={post.author_name || 'Author'} 
-              width={40} 
-              height={40} 
-              className="rounded-full"
-            />
+            <Link href={`/users/${post.author_user_id}`} passHref> {/* Assume /users/:id route */}
+              <Image 
+                src={post.author_avatar_url} 
+                alt={post.author_name || 'Author'} 
+                width={40} 
+                height={40} 
+                className="rounded-full cursor-pointer"
+              />
+            </Link>
           ) : (
             <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white font-semibold">
-              {post.company_id && post.company_name ? post.company_name.charAt(0).toUpperCase() : post.author_name ? post.author_name.charAt(0).toUpperCase() : 'U'}
+              {post.acting_company_name ? post.acting_company_name.charAt(0).toUpperCase()
+               : post.company_name ? post.company_name.charAt(0).toUpperCase()
+               : post.author_name ? post.author_name.charAt(0).toUpperCase() : 'U'}
             </div>
           )}
           <div>
-            <div className="flex flex-col">
-              {/* Author/Company Name Logic */}
-              {post.company_id && post.company_name ? (
+            <div className="flex items-center space-x-1">
+              {/* Name Logic considering acting_company > company > author */}
+              {post.acting_company_name && post.acting_company_id ? (
                 <>
                   <Link
+                      href={`/company/${post.acting_company_id}`}
+                      className="text-lg font-semibold text-gray-900 hover:text-blue-600"
+                  >
+                      {post.acting_company_name}
+                  </Link>
+                  <span className="text-sm text-gray-500">
+                    (by <Link href={`/users/${post.author_user_id}`} className="hover:underline">{post.author_name || 'User'}</Link>)
+                  </span>
+                  {/* Consider adding company verification badge here if acting_company is verified - needs that info in FeedPost */}
+                </>
+              ) : post.company_name && post.company_id ? (
+                 <Link
                       href={`/company/${post.company_id}`}
                       className="text-lg font-semibold text-gray-900 hover:text-blue-600"
                   >
                       {post.company_name}
                   </Link>
-                  {/* Optionally display the user who posted on behalf of the company */}
-                  <span className="text-xs text-gray-500">
-                    Posted by {post.author_name || 'User'}
-                  </span>
-                </>
+                  // TODO: Add company verification badge here if post.company_id is verified
               ) : (
-                <span className="text-lg font-semibold text-gray-900 hover:text-blue-600">
-                  {/* TODO: Add Link to user profile if/when available */}
+                <Link href={`/users/${post.author_user_id}`} className="text-lg font-semibold text-gray-900 hover:text-blue-600">
                   {post.author_name || 'Anonymous User'}
-                </span>
+                </Link>
+              )}
+              {/* Author-specific badges (verification, trust level) - show if not posting as company or if desired alongside company name */}
+              {!post.acting_company_id && post.author_is_verified && (
+                <ShieldCheckIcon className="h-5 w-5 text-blue-500" title="Verified User"/>
               )}
             </div>
-            <p className="text-sm text-gray-500">
-              {getRelativeTime(post.post_created_at)}
-            </p>
+            <div className="flex items-center space-x-2">
+                <p className="text-sm text-gray-500">
+                    {getRelativeTime(post.post_created_at)}
+                </p>
+                {!post.acting_company_id && post.author_trust_level && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${ post.author_trust_level === 'VERIFIED_CONTRIBUTOR' ? 'bg-green-100 text-green-700' : post.author_trust_level === 'ESTABLISHED' ? 'bg-blue-100 text-blue-700' : post.author_trust_level === 'BASIC' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700' }`}>
+                        {post.author_trust_level.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                    </span>
+                )}
+            </div>
           </div>
         </div>
       </div>

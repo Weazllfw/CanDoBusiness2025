@@ -1,0 +1,37 @@
+[
+  {
+    "table_name": "user_connections",
+    "column_name": "id",
+    "column_comment": "Unique identifier for the connection record."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "requester_id",
+    "column_comment": "The user who initiated the connection request."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "addressee_id",
+    "column_comment": "The user who is the recipient of the connection request."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "status",
+    "column_comment": "The current status of the connection (PENDING, ACCEPTED, DECLINED, BLOCKED)."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "notes",
+    "column_comment": "Optional message included with the connection request by the requester."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "requested_at",
+    "column_comment": "Timestamp when the connection request was initiated."
+  },
+  {
+    "table_name": "user_connections",
+    "column_name": "responded_at",
+    "column_comment": "Timestamp when the addressee responded (accepted, declined, or blocked)."
+  }
+]

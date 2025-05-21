@@ -1,0 +1,7 @@
+[
+  {
+    "table_name": "company_connections",
+    "column_name": "requested_by_user_id",
+    "column_comment": "The user who initiated the connection request on behalf of the requester_company_id."
+  }
+]

@@ -59,23 +59,36 @@ RETURNS TABLE (
   bookmark_count BIGINT,
   is_liked_by_current_user BOOLEAN,
   is_bookmarked_by_current_user BOOLEAN,
-  is_network_post INTEGER
-) AS $$
+  feed_ranking_score INTEGER -- Renamed from is_network_post for clarity and broader scope
+)
+LANGUAGE plpgsql
+SECURITY INVOKER -- Explicitly set security context
+AS $$
 BEGIN
   RETURN QUERY
-  WITH post_stats AS (
+  WITH current_user_connections AS (
+    -- Users connected to the current user
+    SELECT addressee_id AS connected_user_id FROM public.user_connections WHERE requester_id = p_user_id AND status = 'ACCEPTED'
+    UNION
+    SELECT requester_id AS connected_user_id FROM public.user_connections WHERE addressee_id = p_user_id AND status = 'ACCEPTED'
+  ),
+  current_user_followed_companies AS (
+    -- Companies followed by the current user
+    SELECT ucf.company_id FROM public.user_company_follows ucf WHERE ucf.user_id = p_user_id
+  ),
+  post_stats AS (
     SELECT
-      p.id,
+      p_stats.id,
       COUNT(DISTINCT pl.user_id) as like_count,
       COUNT(DISTINCT pc.id) as comment_count,
       COUNT(DISTINCT pb.user_id) as bookmark_count,
       bool_or(pl.user_id = p_user_id) as is_liked,
       bool_or(pb.user_id = p_user_id) as is_bookmarked
-    FROM posts p
-    LEFT JOIN post_likes pl ON p.id = pl.post_id
-    LEFT JOIN post_comments pc ON p.id = pc.post_id
-    LEFT JOIN post_bookmarks pb ON p.id = pb.post_id
-    GROUP BY p.id
+    FROM posts p_stats -- aliased to avoid conflict with outer p
+    LEFT JOIN post_likes pl ON p_stats.id = pl.post_id
+    LEFT JOIN post_comments pc ON p_stats.id = pc.post_id
+    LEFT JOIN post_bookmarks pb ON p_stats.id = pb.post_id
+    GROUP BY p_stats.id
   )
   SELECT
     p.id::UUID as post_id,
@@ -96,24 +109,29 @@ BEGIN
     COALESCE(ps.bookmark_count, 0) as bookmark_count,
     COALESCE(ps.is_liked, false) as is_liked_by_current_user,
     COALESCE(ps.is_bookmarked, false) as is_bookmarked_by_current_user,
-    -- is_network_post logic with fixed ambiguous column reference
     CASE
-      WHEN p.company_id IN (
-        SELECT ucf.company_id 
-        FROM user_company_follows ucf
-        WHERE ucf.user_id = p_user_id
-      ) THEN 1
-      ELSE 0
-    END as is_network_post
+        WHEN p.user_id = p_user_id THEN 0 -- Own posts highest
+        WHEN p.user_id IN (SELECT connected_user_id FROM current_user_connections) THEN 1 -- Posts from connected users
+        WHEN p.company_id IN (SELECT company_id FROM current_user_followed_companies) THEN 2 -- Posts from followed companies
+        ELSE 3 -- General posts
+    END as feed_ranking_score
   FROM posts p
   JOIN profiles prof ON p.user_id = prof.id
   LEFT JOIN companies c ON p.company_id = c.id
-  LEFT JOIN post_stats ps ON p.id = ps.id
+  LEFT JOIN post_stats ps ON p.id = ps.id -- ps.id refers to p_stats.id from the CTE
   WHERE 
     p.status = 'visible'
     AND (p_category IS NULL OR p.category = p_category)
-  ORDER BY p.created_at DESC
+  ORDER BY
+    feed_ranking_score ASC, -- Prioritize based on the score (0 is highest)
+    CASE p.author_subscription_tier -- Secondary sort by subscription tier
+        WHEN 'PRO' THEN 1
+        WHEN 'PREMIUM' THEN 2
+        WHEN 'REGULAR' THEN 3
+        ELSE 4 -- Fallback for any other/null tiers
+    END ASC,
+    p.created_at DESC -- Finally, by recency
   LIMIT p_limit
   OFFSET p_offset;
 END;
-$$ LANGUAGE plpgsql; 
+$$; 

@@ -5,7 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation' // For redirecting if not logged in
-import { BuildingOffice2Icon, PencilSquareIcon, PlusCircleIcon } from '@heroicons/react/24/outline'
+import { BuildingOffice2Icon, PencilSquareIcon, PlusCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { 
   CheckBadgeIcon, 
   ClockIcon, 
@@ -162,7 +162,7 @@ export default function ManageCompaniesPage() {
                 </div>
                 {/* Optionally display more info like description here */}
                 {/* <p className="text-gray-600 text-sm mb-4 truncate">{company.description || 'No description'}</p> */}
-                <div className="mt-4 flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <div className="mt-4 flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 flex-wrap">
                   {(company.verification_status === 'UNVERIFIED' || company.verification_status === 'TIER1_REJECTED') && (
                     <Link 
                       href={`/company/${company.id}/apply-for-verification`}
@@ -180,9 +180,14 @@ export default function ManageCompaniesPage() {
                     </Link>
                   )}
                   <Link href={`/company/${company.id}/edit`}
-                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full sm:w-auto">
+                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full sm:w-auto mb-2 sm:mb-0">
                     <PencilSquareIcon className="-ml-0.5 mr-2 h-4 w-4" aria-hidden="true" />
                     Edit Company
+                  </Link>
+                  <Link href={`/company/${company.id}/connections`}
+                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full sm:w-auto mb-2 sm:mb-0">
+                    <Cog6ToothIcon className="-ml-0.5 mr-2 h-4 w-4" aria-hidden="true" />
+                    Manage Connections
                   </Link>
                 </div>
               </div>

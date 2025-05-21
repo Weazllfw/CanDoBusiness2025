@@ -1,0 +1,17 @@
+[
+  {
+    "table_name": "post_likes",
+    "column_name": "post_id",
+    "column_comment": "The post that was liked."
+  },
+  {
+    "table_name": "post_likes",
+    "column_name": "user_id",
+    "column_comment": "The user who liked the post."
+  },
+  {
+    "table_name": "post_likes",
+    "column_name": "created_at",
+    "column_comment": "Timestamp of when the like was given."
+  }
+]

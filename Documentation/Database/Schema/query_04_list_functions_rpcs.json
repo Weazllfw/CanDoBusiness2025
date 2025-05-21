@@ -1,0 +1,932 @@
+[
+  {
+    "schema_name": "internal",
+    "function_name": "assign_company_owner_role",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.assign_company_owner_role()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nBEGIN\r\n    INSERT INTO public.company_users (company_id, user_id, role)\r\n    VALUES (NEW.id, NEW.owner_id, 'OWNER');\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "ensure_admin",
+    "function_arguments": "",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.ensure_admin()\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'internal', 'public'\nAS $function$\r\nBEGIN\r\n  IF NOT internal.is_admin(auth.uid()) THEN\r\n    RAISE EXCEPTION 'User is not authorized to perform this action.';\r\n  END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "get_current_user_id",
+    "function_arguments": "",
+    "returns_type": "uuid",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.get_current_user_id()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$ SELECT auth.uid(); $function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "get_user_connection_ids",
+    "function_arguments": "user_id_param uuid",
+    "returns_type": "TABLE(connected_user_id uuid)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.get_user_connection_ids(user_id_param uuid)\n RETURNS TABLE(connected_user_id uuid)\n LANGUAGE sql\n STABLE\nAS $function$\r\n  SELECT addressee_id AS connected_user_id FROM public.user_connections WHERE requester_id = user_id_param AND status = 'ACCEPTED'\r\n  UNION -- Use UNION to combine two sets and remove duplicates (though requester/addressee logic should prevent functional duplicates for same pair)\r\n  SELECT requester_id AS connected_user_id FROM public.user_connections WHERE addressee_id = user_id_param AND status = 'ACCEPTED';\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "is_admin",
+    "function_arguments": "p_user_id uuid",
+    "returns_type": "boolean",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.is_admin(p_user_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nBEGIN\r\n  RETURN EXISTS (\r\n    SELECT 1\r\n    FROM public.profiles\r\n    WHERE id = p_user_id AND email = 'rmarshall@itmarshall.net'\r\n  );\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "is_company_admin",
+    "function_arguments": "p_user_id uuid, p_company_id uuid",
+    "returns_type": "boolean",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.is_company_admin(p_user_id uuid, p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\n    SELECT EXISTS (\r\n        SELECT 1\r\n        FROM public.company_users cu\r\n        WHERE cu.user_id = p_user_id\r\n          AND cu.company_id = p_company_id\r\n          AND cu.role IN ('ADMIN', 'OWNER') -- Define your admin-level roles here\r\n    );\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "prevent_owner_update_restricted_company_fields",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.prevent_owner_update_restricted_company_fields()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n  -- If the current_user (effective user for permission checking) is a known privileged role,\r\n  -- assume this is a SECURITY DEFINER function (like our RPC) performing the update.\r\n  IF current_user IN ('postgres', 'supabase_admin', 'admin', 'service_role') THEN\r\n    RETURN NEW; -- Allow the update\r\n  END IF;\r\n\r\n  -- If not a privileged current_user, proceed with the original checks based on auth.uid()\r\n  -- This auth.uid() refers to the user from the JWT (the original caller).\r\n  IF OLD.owner_id = auth.uid() AND NOT internal.is_admin(auth.uid()) THEN\r\n    IF NEW.verification_status IS DISTINCT FROM OLD.verification_status THEN\r\n      RAISE EXCEPTION 'As a company owner, you cannot directly change the verification_status. Please contact support if changes are needed.';\r\n    END IF;\r\n    IF NEW.admin_notes IS DISTINCT FROM OLD.admin_notes THEN\r\n      RAISE EXCEPTION 'As a company owner, you cannot change admin_notes.';\r\n    END IF;\r\n  END IF;\r\n  RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "set_updated_at_on_company_users",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.set_updated_at_on_company_users()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = NOW();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "update_related_flag_status",
+    "function_arguments": "p_related_flag_id uuid, p_flag_table text, p_new_status flag_status_enum, p_admin_user_id uuid, p_admin_notes text",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Internal helper to update a flag status when an admin takes action related to it.",
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.update_related_flag_status(p_related_flag_id uuid, p_flag_table text, p_new_status flag_status_enum, p_admin_user_id uuid, p_admin_notes text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n    IF p_related_flag_id IS NOT NULL THEN\r\n        IF p_flag_table = 'post_flags' THEN\r\n            UPDATE public.post_flags\r\n            SET status = p_new_status, \r\n                reviewed_by = p_admin_user_id, \r\n                reviewed_at = now(),\r\n                updated_at = now(),\r\n                admin_notes = COALESCE(p_admin_notes, admin_notes)\r\n            WHERE id = p_related_flag_id;\r\n        ELSIF p_flag_table = 'comment_flags' THEN\r\n            UPDATE public.comment_flags\r\n            SET status = p_new_status, \r\n                reviewed_by = p_admin_user_id, \r\n                reviewed_at = now(),\r\n                updated_at = now(),\r\n                admin_notes = COALESCE(p_admin_notes, admin_notes)\r\n            WHERE id = p_related_flag_id;\r\n        END IF;\r\n    END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "internal",
+    "function_name": "validate_company_user_role_update",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION internal.validate_company_user_role_update()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    v_actor_id UUID := auth.uid();\r\n    v_is_demoting_other_owner BOOLEAN;\r\n    v_is_last_owner_demoting_self BOOLEAN;\r\n    v_other_owner_count INTEGER;\r\nBEGIN\r\n    -- Only proceed if the role is actually being changed.\r\n    IF NEW.role = OLD.role THEN\r\n        RETURN NEW; -- No role change, allow.\r\n    END IF;\r\n\r\n    -- Scenario 1: An admin (v_actor_id) is trying to change the role of a different user (OLD.user_id)\r\n    --             from OWNER to something else.\r\n    v_is_demoting_other_owner := (\r\n        v_actor_id <> OLD.user_id AND \r\n        OLD.role = 'OWNER' AND      \r\n        NEW.role <> 'OWNER'             \r\n    );\r\n\r\n    -- Scenario 2: An OWNER (OLD.user_id = v_actor_id) is trying to change their own role \r\n    --             from OWNER to something else, AND they are the last Owner of that company.\r\n    IF (v_actor_id = OLD.user_id AND OLD.role = 'OWNER' AND NEW.role <> 'OWNER') THEN\r\n        SELECT COUNT(*) INTO v_other_owner_count\r\n        FROM public.company_users cu \r\n        WHERE cu.company_id = OLD.company_id \r\n          AND cu.role = 'OWNER' \r\n          AND cu.user_id <> OLD.user_id; -- Count *other* owners\r\n        \r\n        v_is_last_owner_demoting_self := (v_other_owner_count = 0);\r\n    ELSE\r\n        v_is_last_owner_demoting_self := FALSE;\r\n    END IF;\r\n\r\n    IF v_is_demoting_other_owner THEN\r\n        RAISE EXCEPTION 'Admins cannot demote an OWNER of a company.';\r\n    END IF;\r\n\r\n    IF v_is_last_owner_demoting_self THEN\r\n        RAISE EXCEPTION 'An OWNER cannot demote themselves if they are the last OWNER of the company. Transfer ownership first.';\r\n    END IF;\r\n\r\n    RETURN NEW; -- If no restricted scenario is met, allow the update.\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_ban_user",
+    "function_arguments": "p_target_profile_id uuid, p_reason text, p_duration_days integer, p_related_content_id uuid, p_related_content_type admin_action_target_type_enum, p_related_flag_id uuid, p_flag_table text",
+    "returns_type": "SETOF profiles",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin action: Bans a user (temporarily or permanently), logs action, sends message & notification, updates profile status.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_ban_user(p_target_profile_id uuid, p_reason text, p_duration_days integer DEFAULT NULL::integer, p_related_content_id uuid DEFAULT NULL::uuid, p_related_content_type admin_action_target_type_enum DEFAULT NULL::admin_action_target_type_enum, p_related_flag_id uuid DEFAULT NULL::uuid, p_flag_table text DEFAULT NULL::text)\n RETURNS SETOF profiles\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_admin_user_id UUID := auth.uid();\r\n    v_system_sender_id UUID;\r\n    v_ban_message_content TEXT;\r\n    v_profile_status public.profile_status_enum;\r\n    v_ban_expires_at TIMESTAMPTZ DEFAULT NULL;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    SELECT id INTO v_system_sender_id FROM public.profiles WHERE email = 'rmarshall@itmarshall.net' LIMIT 1;\r\n\r\n    IF p_duration_days IS NOT NULL AND p_duration_days > 0 THEN\r\n        v_profile_status := 'banned_temporarily';\r\n        v_ban_expires_at := now() + (p_duration_days * INTERVAL '1 day');\r\n        v_ban_message_content := 'Your account has been temporarily banned. Reason: ' || COALESCE(p_reason, '(No reason provided)') || '. Your ban will expire on ' || to_char(v_ban_expires_at, 'YYYY-MM-DD HH24:MI:SS TZ') || '.';\r\n    ELSE\r\n        v_profile_status := 'banned_permanently';\r\n        v_ban_message_content := 'Your account has been permanently banned. Reason: ' || COALESCE(p_reason, '(No reason provided)') || '.';\r\n    END IF;\r\n\r\n    INSERT INTO public.admin_actions_log (\r\n        admin_user_id, action_type, target_profile_id, target_content_id, target_content_type, reason_notes, details\r\n    )\r\n    VALUES (\r\n        v_admin_user_id, \r\n        CASE \r\n            WHEN v_profile_status = 'banned_temporarily' THEN 'user_banned_temporarily'::public.admin_action_type_enum \r\n            ELSE 'user_banned_permanently'::public.admin_action_type_enum \r\n        END,\r\n        p_target_profile_id, \r\n        p_related_content_id, \r\n        p_related_content_type, \r\n        p_reason,\r\n        jsonb_build_object(\r\n            'related_flag_id', p_related_flag_id,\r\n            'duration_days', p_duration_days\r\n        )\r\n    );\r\n\r\n    IF p_related_flag_id IS NOT NULL AND p_flag_table IS NOT NULL THEN\r\n        PERFORM internal.update_related_flag_status(p_related_flag_id, p_flag_table, 'resolved_user_banned', v_admin_user_id, p_reason);\r\n    END IF;\r\n\r\n    UPDATE public.profiles\r\n    SET status = v_profile_status, ban_expires_at = v_ban_expires_at, updated_at = now()\r\n    WHERE id = p_target_profile_id;\r\n\r\n    IF v_system_sender_id IS NOT NULL AND p_target_profile_id IS NOT NULL THEN\r\n        BEGIN\r\n            INSERT INTO public.messages (sender_id, receiver_id, content, is_system_message)\r\n            VALUES (v_system_sender_id, p_target_profile_id, v_ban_message_content, TRUE);\r\n        EXCEPTION\r\n            WHEN OTHERS THEN\r\n                RAISE WARNING 'Failed to send ban message to user %: %', p_target_profile_id, SQLERRM;\r\n        END;\r\n    ELSIF v_system_sender_id IS NULL THEN\r\n        RAISE WARNING 'System admin profile (rmarshall@itmarshall.net) not found. Cannot send ban message to user %.', p_target_profile_id;\r\n    END IF;\r\n\r\n    BEGIN\r\n        INSERT INTO public.user_notifications (user_id, title, message, notification_type, link_to)\r\n        VALUES (p_target_profile_id, \r\n                CASE WHEN v_profile_status = 'banned_temporarily' THEN 'Account Temporarily Banned' ELSE 'Account Permanently Banned' END, \r\n                v_ban_message_content, \r\n                'content_moderation', \r\n                NULL);\r\n    EXCEPTION\r\n        WHEN OTHERS THEN\r\n            RAISE WARNING 'Failed to create user notification for ban (user: %): %', p_target_profile_id, SQLERRM;\r\n    END;\r\n\r\n    RETURN QUERY SELECT * FROM public.profiles WHERE id = p_target_profile_id;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_get_all_companies_with_owner_info",
+    "function_arguments": "",
+    "returns_type": "SETOF admin_company_details",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_get_all_companies_with_owner_info()\n RETURNS SETOF admin_company_details\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n  IF NOT internal.is_admin(auth.uid()) THEN\r\n    RAISE EXCEPTION 'User is not authorized to perform this action.';\r\n  END IF;\r\n\r\n  RETURN QUERY\r\n  SELECT\r\n    c.id AS company_id,\r\n    c.name AS company_name,\r\n    c.created_at AS company_created_at,\r\n    c.website AS company_website,\r\n    c.industry AS company_industry,\r\n    c.owner_id,\r\n    p.email AS owner_email,\r\n    p.name AS profile_name,\r\n    c.verification_status,\r\n    c.admin_notes,\r\n    c.self_attestation_completed,\r\n    c.business_number,\r\n    c.public_presence_links,\r\n    c.street_address,\r\n    c.city,\r\n    c.province,\r\n    c.postal_code,\r\n    c.major_metropolitan_area,\r\n    c.other_metropolitan_area_specify,\r\n    c.contact_person_name,\r\n    c.contact_person_email,\r\n    c.contact_person_phone,\r\n    c.services,\r\n    c.tier2_document_type,\r\n    c.tier2_document_filename,\r\n    c.tier2_document_storage_path,\r\n    c.tier2_document_uploaded_at\r\n  FROM\r\n    public.companies c\r\n  LEFT JOIN\r\n    public.profiles p ON c.owner_id = p.id\r\n  ORDER BY\r\n    c.created_at DESC;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_get_comment_flags",
+    "function_arguments": "p_status flag_status_enum, p_page_number integer, p_page_size integer",
+    "returns_type": "TABLE(flag_id uuid, comment_id uuid, comment_content text, comment_author_id uuid, comment_author_username text, flagger_user_id uuid, flagger_username text, reason text, status flag_status_enum, created_at timestamp with time zone, updated_at timestamp with time zone, admin_notes text, total_count bigint)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin RPC to get paginated comment flags, optionally filtered by status. Requires admin privileges.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_get_comment_flags(p_status flag_status_enum DEFAULT NULL::flag_status_enum, p_page_number integer DEFAULT 1, p_page_size integer DEFAULT 10)\n RETURNS TABLE(flag_id uuid, comment_id uuid, comment_content text, comment_author_id uuid, comment_author_username text, flagger_user_id uuid, flagger_username text, reason text, status flag_status_enum, created_at timestamp with time zone, updated_at timestamp with time zone, admin_notes text, total_count bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_offset INT;\r\n    v_total_records BIGINT;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n    v_offset := (p_page_number - 1) * p_page_size;\r\n\r\n    SELECT count(*) INTO v_total_records\r\n    FROM public.comment_flags cf\r\n    WHERE (p_status IS NULL OR cf.status = p_status);\r\n\r\n    RETURN QUERY\r\n    SELECT\r\n        cf.id as flag_id,\r\n        cf.comment_id,\r\n        c.content as comment_content,\r\n        c.user_id as comment_author_id,\r\n        COALESCE(author_profile.name, 'Unknown') as comment_author_username,\r\n        cf.user_id as flagger_user_id,\r\n        COALESCE(flagger_profile.name, 'Unknown') as flagger_username,\r\n        cf.reason,\r\n        cf.status,\r\n        cf.created_at,\r\n        cf.updated_at,\r\n        cf.admin_notes,\r\n        v_total_records AS total_count\r\n    FROM public.comment_flags cf\r\n    JOIN public.post_comments c ON cf.comment_id = c.id\r\n    LEFT JOIN public.profiles author_profile ON c.user_id = author_profile.id\r\n    LEFT JOIN public.profiles flagger_profile ON cf.user_id = flagger_profile.id\r\n    WHERE (p_status IS NULL OR cf.status = p_status)\r\n    ORDER BY cf.created_at DESC\r\n    LIMIT p_page_size\r\n    OFFSET v_offset;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_get_flag_statistics",
+    "function_arguments": "",
+    "returns_type": "TABLE(status flag_status_enum, post_flag_count bigint, comment_flag_count bigint)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin RPC to get counts of post and comment flags, grouped by status. Requires admin privileges.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_get_flag_statistics()\n RETURNS TABLE(status flag_status_enum, post_flag_count bigint, comment_flag_count bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n    -- Ensure the caller is an admin\r\n    PERFORM ensure_admin();\r\n\r\n    RETURN QUERY\r\n    SELECT s.status_val, pf.count, cf.count\r\n    FROM unnest(enum_range(NULL::public.flag_status_enum)) s(status_val)\r\n    LEFT JOIN (\r\n        SELECT post_flags.status, count(*) AS count FROM public.post_flags GROUP BY post_flags.status\r\n    ) pf ON pf.status = s.status_val\r\n    LEFT JOIN (\r\n        SELECT comment_flags.status, count(*) AS count FROM public.comment_flags GROUP BY comment_flags.status\r\n    ) cf ON cf.status = s.status_val;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_get_post_flags",
+    "function_arguments": "p_status flag_status_enum, p_page_number integer, p_page_size integer",
+    "returns_type": "TABLE(flag_id uuid, post_id uuid, post_content text, post_media_url text, post_media_type text, post_author_id uuid, post_author_username text, flagger_user_id uuid, flagger_username text, reason text, status flag_status_enum, created_at timestamp with time zone, updated_at timestamp with time zone, admin_notes text, total_count bigint)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin RPC to get paginated post flags, optionally filtered by status. Requires admin privileges.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_get_post_flags(p_status flag_status_enum DEFAULT NULL::flag_status_enum, p_page_number integer DEFAULT 1, p_page_size integer DEFAULT 10)\n RETURNS TABLE(flag_id uuid, post_id uuid, post_content text, post_media_url text, post_media_type text, post_author_id uuid, post_author_username text, flagger_user_id uuid, flagger_username text, reason text, status flag_status_enum, created_at timestamp with time zone, updated_at timestamp with time zone, admin_notes text, total_count bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_offset INT;\r\n    v_total_records BIGINT;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n    v_offset := (p_page_number - 1) * p_page_size;\r\n\r\n    SELECT count(*) INTO v_total_records\r\n    FROM public.post_flags pf\r\n    WHERE (p_status IS NULL OR pf.status = p_status);\r\n\r\n    RETURN QUERY\r\n    SELECT\r\n        pf.id as flag_id,\r\n        pf.post_id,\r\n        p.content as post_content,\r\n        p.media_url as post_media_url,\r\n        p.media_type as post_media_type,\r\n        p.user_id as post_author_id,\r\n        COALESCE(author_profile.name, 'Unknown') as post_author_username,\r\n        pf.user_id as flagger_user_id,\r\n        COALESCE(flagger_profile.name, 'Unknown') as flagger_username,\r\n        pf.reason,\r\n        pf.status,\r\n        pf.created_at,\r\n        pf.updated_at,\r\n        pf.admin_notes,\r\n        v_total_records AS total_count\r\n    FROM public.post_flags pf\r\n    JOIN public.posts p ON pf.post_id = p.id\r\n    LEFT JOIN public.profiles author_profile ON p.user_id = author_profile.id\r\n    LEFT JOIN public.profiles flagger_profile ON pf.user_id = flagger_profile.id\r\n    WHERE (p_status IS NULL OR pf.status = p_status)\r\n    ORDER BY pf.created_at DESC\r\n    LIMIT p_page_size\r\n    OFFSET v_offset;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_remove_comment",
+    "function_arguments": "p_comment_id uuid, p_reason text, p_related_flag_id uuid, p_flag_table text",
+    "returns_type": "SETOF post_comments",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin action: Marks a comment as removed_by_admin, logs the action, and notifies the comment author via message and notification.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_remove_comment(p_comment_id uuid, p_reason text, p_related_flag_id uuid DEFAULT NULL::uuid, p_flag_table text DEFAULT NULL::text)\n RETURNS SETOF post_comments\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_admin_user_id UUID := auth.uid();\r\n    v_target_profile_id UUID;\r\n    v_system_sender_id UUID;\r\n    v_comment_content_snippet TEXT;\r\n    v_removal_message_content TEXT;\r\n    updated_comment public.post_comments;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    SELECT pc.user_id, left(pc.content, 100) \r\n    INTO v_target_profile_id, v_comment_content_snippet \r\n    FROM public.post_comments pc WHERE pc.id = p_comment_id;\r\n\r\n    SELECT id INTO v_system_sender_id FROM public.profiles WHERE email = 'rmarshall@itmarshall.net' LIMIT 1;\r\n\r\n    INSERT INTO public.admin_actions_log (\r\n        admin_user_id, action_type, target_profile_id, target_content_id, target_content_type, reason_notes, details\r\n    )\r\n    VALUES (\r\n        v_admin_user_id, \r\n        'content_removed_comment', \r\n        v_target_profile_id, \r\n        p_comment_id, \r\n        'comment', \r\n        p_reason,\r\n        jsonb_build_object('related_flag_id', p_related_flag_id)\r\n    );\r\n\r\n    IF p_related_flag_id IS NOT NULL AND p_flag_table = 'comment_flags' THEN\r\n        PERFORM internal.update_related_flag_status(p_related_flag_id, p_flag_table, 'resolved_content_removed', v_admin_user_id, p_reason);\r\n    END IF;\r\n\r\n    UPDATE public.post_comments\r\n    SET status = 'removed_by_admin', updated_at = now()\r\n    WHERE id = p_comment_id\r\n    RETURNING * INTO updated_comment;\r\n\r\n    IF v_system_sender_id IS NOT NULL AND v_target_profile_id IS NOT NULL THEN\r\n        v_removal_message_content := 'Your comment (starting with: \"' || v_comment_content_snippet || '...\") was removed by an administrator. Reason: ' || COALESCE(p_reason, '(No specific reason provided)');\r\n        \r\n        BEGIN\r\n            INSERT INTO public.messages (sender_id, receiver_id, content, is_system_message)\r\n            VALUES (v_system_sender_id, v_target_profile_id, v_removal_message_content, TRUE);\r\n        EXCEPTION\r\n            WHEN OTHERS THEN\r\n                RAISE WARNING 'Failed to send comment removal message to user % for comment %: %', v_target_profile_id, p_comment_id, SQLERRM;\r\n        END;\r\n    ELSIF v_system_sender_id IS NULL THEN\r\n        RAISE WARNING 'System admin profile (rmarshall@itmarshall.net) not found. Cannot send comment removal message for comment %.', p_comment_id;\r\n    END IF;\r\n\r\n    BEGIN\r\n        INSERT INTO public.user_notifications (user_id, title, message, notification_type, link_to)\r\n        VALUES (v_target_profile_id, 'Comment Removed', v_removal_message_content, 'content_moderation', NULL);\r\n    EXCEPTION\r\n        WHEN OTHERS THEN\r\n            RAISE WARNING 'Failed to create user notification for comment removal (user: %, comment: %): %', v_target_profile_id, p_comment_id, SQLERRM;\r\n    END;\r\n\r\n    RETURN NEXT updated_comment;\r\n    RETURN;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_remove_post",
+    "function_arguments": "p_post_id uuid, p_reason text, p_related_flag_id uuid, p_flag_table text",
+    "returns_type": "SETOF posts",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin action: Marks a post as removed_by_admin, logs the action, and notifies the post author via message and notification.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_remove_post(p_post_id uuid, p_reason text, p_related_flag_id uuid DEFAULT NULL::uuid, p_flag_table text DEFAULT NULL::text)\n RETURNS SETOF posts\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_admin_user_id UUID := auth.uid();\r\n    v_target_profile_id UUID;\r\n    v_system_sender_id UUID;\r\n    v_post_content_snippet TEXT;\r\n    v_removal_message_content TEXT;\r\n    updated_post public.posts;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    SELECT user_id, left(content, 100) INTO v_target_profile_id, v_post_content_snippet FROM public.posts WHERE id = p_post_id;\r\n\r\n    -- Get the system admin user ID for sending messages\r\n    SELECT id INTO v_system_sender_id FROM public.profiles WHERE email = 'rmarshall@itmarshall.net' LIMIT 1;\r\n\r\n    INSERT INTO public.admin_actions_log (\r\n        admin_user_id, action_type, target_profile_id, target_content_id, target_content_type, reason_notes, details\r\n    )\r\n    VALUES (\r\n        v_admin_user_id, \r\n        'content_removed_post', \r\n        v_target_profile_id, \r\n        p_post_id, \r\n        'post', \r\n        p_reason,\r\n        jsonb_build_object('related_flag_id', p_related_flag_id)\r\n    );\r\n\r\n    IF p_related_flag_id IS NOT NULL AND p_flag_table = 'post_flags' THEN\r\n        PERFORM internal.update_related_flag_status(p_related_flag_id, p_flag_table, 'resolved_content_removed', v_admin_user_id, p_reason);\r\n    END IF;\r\n\r\n    UPDATE public.posts\r\n    SET status = 'removed_by_admin', updated_at = now()\r\n    WHERE id = p_post_id\r\n    RETURNING * INTO updated_post;\r\n\r\n    -- Send a message to the post author if system sender and target profile are found\r\n    IF v_system_sender_id IS NOT NULL AND v_target_profile_id IS NOT NULL THEN\r\n        v_removal_message_content := 'Your post (starting with: \"' || v_post_content_snippet || '...\") was removed by an administrator. Reason: ' || COALESCE(p_reason, '(No specific reason provided)');\r\n        \r\n        BEGIN\r\n            INSERT INTO public.messages (sender_id, receiver_id, content, is_system_message)\r\n            VALUES (v_system_sender_id, v_target_profile_id, v_removal_message_content, TRUE);\r\n        EXCEPTION\r\n            WHEN OTHERS THEN\r\n                RAISE WARNING 'Failed to send post removal message to user % for post %: %', v_target_profile_id, p_post_id, SQLERRM;\r\n        END;\r\n    ELSIF v_system_sender_id IS NULL THEN\r\n        RAISE WARNING 'System admin profile (rmarshall@itmarshall.net) not found. Cannot send post removal message to user for post %.', p_post_id;\r\n    END IF;\r\n\r\n    -- Also create a user notification for this action\r\n    BEGIN\r\n        INSERT INTO public.user_notifications (user_id, title, message, notification_type, link_to)\r\n        VALUES (v_target_profile_id, 'Post Removed', v_removal_message_content, 'content_moderation', NULL);\r\n    EXCEPTION\r\n        WHEN OTHERS THEN\r\n            RAISE WARNING 'Failed to create user notification for post removal (user: %, post: %): %', v_target_profile_id, p_post_id, SQLERRM;\r\n    END;\r\n\r\n    RETURN NEXT updated_post;\r\n    RETURN;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_update_comment_flag_status",
+    "function_arguments": "p_flag_id uuid, p_new_status flag_status_enum, p_admin_notes text",
+    "returns_type": "SETOF comment_flags",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin RPC to update the status and notes of a specific comment flag. Requires admin privileges.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_update_comment_flag_status(p_flag_id uuid, p_new_status flag_status_enum, p_admin_notes text DEFAULT NULL::text)\n RETURNS SETOF comment_flags\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    RETURN QUERY\r\n    UPDATE public.comment_flags\r\n    SET\r\n        status = p_new_status,\r\n        admin_notes = COALESCE(p_admin_notes, admin_notes),\r\n        updated_at = now()\r\n    WHERE id = p_flag_id\r\n    RETURNING *;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_update_company_verification",
+    "function_arguments": "p_company_id uuid, p_new_status character varying, p_new_admin_notes text",
+    "returns_type": "companies",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_update_company_verification(p_company_id uuid, p_new_status character varying, p_new_admin_notes text)\n RETURNS companies\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal', 'storage'\nAS $function$\r\nDECLARE\r\n  updated_company public.companies%ROWTYPE;\r\n  company_to_update public.companies%ROWTYPE;\r\n  system_user_id uuid;\r\n  company_owner_id uuid;\r\n  -- System user\\'s email to look up in profiles. Ensure this profile exists.\r\n  admin_profile_email TEXT := 'rmarshall@itmarshall.net'; \r\n  message_content TEXT;\r\n  status_display_name TEXT;\r\n  v_tier2_doc_path TEXT;\r\n  v_deleted_count INTEGER;\r\nBEGIN\r\n  IF NOT internal.is_admin(auth.uid()) THEN\r\n    RAISE EXCEPTION 'User is not authorized to perform this action.';\r\n  END IF;\r\n\r\n  -- Fetch the current company details, especially for tier2_document_storage_path\r\n  SELECT * INTO company_to_update FROM public.companies WHERE id = p_company_id;\r\n  IF NOT FOUND THEN\r\n    RAISE EXCEPTION 'Company with ID % not found when fetching for update.', p_company_id;\r\n  END IF;\r\n\r\n  -- Look up the system user ID for messaging.\r\n  SELECT id INTO system_user_id FROM public.profiles WHERE email = admin_profile_email LIMIT 1;\r\n  IF system_user_id IS NULL THEN\r\n    RAISE WARNING 'Admin Notification: System user profile for email [%] not found. Verification update will proceed, but notification message will not be sent.', admin_profile_email;\r\n  END IF;\r\n\r\n  -- Update company status and admin notes\r\n  UPDATE public.companies\r\n  SET\r\n    verification_status = p_new_status,\r\n    admin_notes = p_new_admin_notes\r\n  WHERE id = p_company_id\r\n  RETURNING * INTO updated_company;\r\n\r\n  IF NOT FOUND THEN -- Should not happen if previous select found it, but good practice\r\n    RAISE EXCEPTION 'Company with ID % not found during update.', p_company_id;\r\n  END IF;\r\n\r\n  -- If Tier 2 status is being finalized (Verified or Rejected), delete the document and clear fields.\r\n  IF (p_new_status = 'TIER2_FULLY_VERIFIED' OR p_new_status = 'TIER2_REJECTED') AND company_to_update.tier2_document_storage_path IS NOT NULL THEN\r\n    v_tier2_doc_path := company_to_update.tier2_document_storage_path;\r\n    RAISE NOTICE 'Tier 2 finalized for company ID %. Attempting to delete document at path: % from bucket tier2-verification-documents', p_company_id, v_tier2_doc_path;\r\n\r\n    BEGIN\r\n      -- Attempt to delete the object from storage.\r\n      -- Note: The storage.delete_object function expects the bucket name and the object path.\r\n      -- Supabase storage paths usually don't start with 'public/' when passed to API, but from within DB, check expectations.\r\n      -- Assuming v_tier2_doc_path is the full path within the bucket.\r\n      SELECT count(*) INTO v_deleted_count FROM storage.delete_object('tier2-verification-documents', v_tier2_doc_path);\r\n      RAISE NOTICE 'Storage deletion attempt for %: % objects removed (expected 1 or 0 if already gone).', v_tier2_doc_path, v_deleted_count;\r\n\r\n      -- Clear the document fields in the companies table\r\n      UPDATE public.companies\r\n      SET\r\n        tier2_document_type = NULL,\r\n        tier2_document_filename = NULL,\r\n        tier2_document_storage_path = NULL,\r\n        tier2_document_uploaded_at = NULL\r\n      WHERE id = p_company_id;\r\n      RAISE NOTICE 'Tier 2 document fields cleared for company ID %.', p_company_id;\r\n\r\n    EXCEPTION\r\n      WHEN OTHERS THEN\r\n        RAISE WARNING 'Admin Notification: Failed to delete Tier 2 document at path [%] or clear fields for company ID %. SQLSTATE: %, SQLERRM: %. Manual cleanup may be required.', v_tier2_doc_path, p_company_id, SQLSTATE, SQLERRM;\r\n        -- Do not let document deletion failure roll back the main transaction (status update and message).\r\n    END;\r\n  END IF;\r\n\r\n  -- Send notification message (existing logic)\r\n  IF system_user_id IS NOT NULL AND updated_company.owner_id IS NOT NULL THEN\r\n    company_owner_id := updated_company.owner_id;\r\n    IF system_user_id = company_owner_id THEN\r\n      RAISE NOTICE 'Admin Notification: Company owner is the system user. No notification message sent to self for company ID %.', p_company_id;\r\n    ELSE\r\n      -- Get a more user-friendly display name for the status\r\n      status_display_name := CASE p_new_status\r\n        WHEN 'UNVERIFIED' THEN 'Unverified'\r\n        WHEN 'TIER1_PENDING' THEN 'Tier 1 Pending Review'\r\n        WHEN 'TIER1_VERIFIED' THEN 'Tier 1 Verified'\r\n        WHEN 'TIER1_REJECTED' THEN 'Tier 1 Application Rejected'\r\n        WHEN 'TIER2_PENDING' THEN 'Tier 2 Pending Review'\r\n        WHEN 'TIER2_FULLY_VERIFIED' THEN 'Tier 2 Fully Verified'\r\n        WHEN 'TIER2_REJECTED' THEN 'Tier 2 Application Rejected'\r\n        ELSE p_new_status -- Fallback to the raw status if not mapped\r\n      END;\r\n\r\n      message_content := 'Your company, ' || updated_company.name || ', has had its verification status updated to: ' || status_display_name || '.';\r\n      IF p_new_admin_notes IS NOT NULL AND trim(p_new_admin_notes) <> '' THEN\r\n        message_content := message_content || ' Admin notes: ' || p_new_admin_notes;\r\n      END IF;\r\n\r\n      BEGIN\r\n        INSERT INTO public.messages (sender_id, receiver_id, content)\r\n        VALUES (system_user_id, company_owner_id, message_content);\r\n        RAISE NOTICE 'Admin Notification: Message sent to user % regarding company % status change to %', company_owner_id, updated_company.name, p_new_status;\r\n      EXCEPTION\r\n        WHEN OTHERS THEN\r\n          RAISE WARNING 'Admin Notification: Failed to send message to user % for company %. SQLSTATE: %, SQLERRM: %', company_owner_id, p_company_id, SQLSTATE, SQLERRM;\r\n          -- Do not let message failure roll back the main transaction\r\n      END;\r\n    END IF;\r\n  END IF;\r\n\r\n  RETURN updated_company;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_update_post_flag_status",
+    "function_arguments": "p_flag_id uuid, p_new_status flag_status_enum, p_admin_notes text",
+    "returns_type": "SETOF post_flags",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin RPC to update the status and notes of a specific post flag. Requires admin privileges.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_update_post_flag_status(p_flag_id uuid, p_new_status flag_status_enum, p_admin_notes text DEFAULT NULL::text)\n RETURNS SETOF post_flags\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    RETURN QUERY\r\n    UPDATE public.post_flags\r\n    SET\r\n        status = p_new_status,\r\n        admin_notes = COALESCE(p_admin_notes, admin_notes), -- Keep existing notes if new ones are null\r\n        updated_at = now()\r\n    WHERE id = p_flag_id\r\n    RETURNING *;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_warn_user",
+    "function_arguments": "p_target_profile_id uuid, p_reason text, p_related_content_id uuid, p_related_content_type admin_action_target_type_enum, p_related_flag_id uuid, p_flag_table text",
+    "returns_type": "SETOF profiles",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Admin action: Warns a user, logs action, sends message & notification, updates profile last_warning_at.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.admin_warn_user(p_target_profile_id uuid, p_reason text, p_related_content_id uuid DEFAULT NULL::uuid, p_related_content_type admin_action_target_type_enum DEFAULT NULL::admin_action_target_type_enum, p_related_flag_id uuid DEFAULT NULL::uuid, p_flag_table text DEFAULT NULL::text)\n RETURNS SETOF profiles\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_admin_user_id UUID := auth.uid();\r\n    v_system_sender_id UUID;\r\n    v_warning_message_content TEXT;\r\nBEGIN\r\n    PERFORM ensure_admin();\r\n\r\n    SELECT id INTO v_system_sender_id FROM public.profiles WHERE email = 'rmarshall@itmarshall.net' LIMIT 1;\r\n\r\n    IF v_system_sender_id IS NULL THEN\r\n        RAISE WARNING 'System admin profile (rmarshall@itmarshall.net) not found. Cannot send warning message to user.';\r\n    END IF;\r\n\r\n    INSERT INTO public.admin_actions_log (\r\n        admin_user_id, action_type, target_profile_id, target_content_id, target_content_type, reason_notes, details\r\n    )\r\n    VALUES (\r\n        v_admin_user_id, \r\n        'user_warned', \r\n        p_target_profile_id, \r\n        p_related_content_id, \r\n        p_related_content_type, \r\n        p_reason,\r\n        jsonb_build_object('related_flag_id', p_related_flag_id)\r\n    );\r\n\r\n    IF p_related_flag_id IS NOT NULL AND p_flag_table IS NOT NULL THEN\r\n        PERFORM internal.update_related_flag_status(p_related_flag_id, p_flag_table, 'resolved_user_warned', v_admin_user_id, p_reason);\r\n    END IF;\r\n\r\n    IF v_system_sender_id IS NOT NULL AND p_target_profile_id IS NOT NULL THEN\r\n        v_warning_message_content := 'You have received an official warning regarding your activity on the platform. Reason: ' || COALESCE(p_reason, '(No specific reason provided by admin)');\r\n        \r\n        IF p_related_content_type IS NOT NULL AND p_related_content_id IS NOT NULL THEN\r\n             v_warning_message_content := v_warning_message_content || '. This warning is related to content of type: ' || p_related_content_type::text || ' (ID: ' || p_related_content_id::text || ')';\r\n        END IF;\r\n\r\n        BEGIN\r\n            INSERT INTO public.messages (sender_id, receiver_id, content, is_system_message)\r\n            VALUES (v_system_sender_id, p_target_profile_id, v_warning_message_content, TRUE);\r\n        EXCEPTION\r\n            WHEN OTHERS THEN\r\n                RAISE WARNING 'Failed to send warning message to user %: %', p_target_profile_id, SQLERRM;\r\n        END;\r\n    END IF;\r\n\r\n    BEGIN\r\n        INSERT INTO public.user_notifications (user_id, title, message, notification_type, link_to)\r\n        VALUES (p_target_profile_id, 'Account Warning', v_warning_message_content, 'content_moderation', NULL);\r\n    EXCEPTION\r\n        WHEN OTHERS THEN\r\n            RAISE WARNING 'Failed to create user notification for account warning (user: %): %', p_target_profile_id, SQLERRM;\r\n    END;\r\n\r\n    -- Update last_warning_at for the profile\r\n    UPDATE public.profiles\r\n    SET last_warning_at = now(), status = 'warned' -- Optionally set profile status to warned\r\n    WHERE id = p_target_profile_id;\r\n\r\n    -- Return the updated profile row\r\n    RETURN QUERY SELECT * FROM public.profiles WHERE id = p_target_profile_id;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "check_if_user_is_company_admin",
+    "function_arguments": "p_user_id_to_check uuid, p_target_company_id uuid",
+    "returns_type": "boolean",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.check_if_user_is_company_admin(p_user_id_to_check uuid, p_target_company_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nBEGIN\r\n  -- This public wrapper calls the existing internal function.\r\n  RETURN internal.is_company_admin(p_user_id_to_check, p_target_company_id);\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "create_quote_revision",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.create_quote_revision()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n    IF (TG_OP = 'UPDATE' AND (\n        NEW.amount IS DISTINCT FROM OLD.amount OR\n        NEW.currency IS DISTINCT FROM OLD.currency OR\n        NEW.delivery_time IS DISTINCT FROM OLD.delivery_time OR\n        NEW.notes IS DISTINCT FROM OLD.notes\n    )) THEN\n        INSERT INTO public.quote_revisions (\n            quote_id,\n            amount,\n            currency,\n            delivery_time,\n            notes,\n            revision_number,\n            changes_description\n        ) VALUES (\n            NEW.id,\n            NEW.amount,\n            NEW.currency,\n            NEW.delivery_time,\n            NEW.notes,\n            (SELECT COALESCE(MAX(revision_number), 0) + 1 FROM public.quote_revisions WHERE quote_id = NEW.id),\n            'Quote updated'\n        );\n    END IF;\n    RETURN NEW;\nEND;\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "follow_company",
+    "function_arguments": "p_company_id uuid",
+    "returns_type": "user_company_follows",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.follow_company(p_company_id uuid)\n RETURNS user_company_follows\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    v_user_id uuid := auth.uid();\r\n    v_row public.user_company_follows;\r\nBEGIN\r\n    INSERT INTO public.user_company_follows (user_id, company_id)\r\n    VALUES (v_user_id, p_company_id)\r\n    ON CONFLICT (user_id, company_id) DO NOTHING\r\n    RETURNING * INTO v_row;\r\n    RETURN v_row;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_connection_status_with",
+    "function_arguments": "p_acting_company_id uuid, p_other_company_id uuid",
+    "returns_type": "text",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Checks connection status between p_acting_company_id and p_other_company_id, for admins of p_acting_company_id.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_connection_status_with(p_acting_company_id uuid, p_other_company_id uuid)\n RETURNS text\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\n    v_status public.connection_status_enum;\r\n    v_requester_company_id UUID;\r\n    v_is_admin BOOLEAN;\r\nBEGIN\r\n    v_is_admin := internal.is_company_admin(v_current_user_id, p_acting_company_id);\r\n\r\n    IF NOT v_is_admin THEN\r\n      -- Non-admins of the acting company can only know if they are connected or not (public info)\r\n      -- or if a request is pending from their company to the other, if they are the one who sent it.\r\n      -- For simplicity, let's return 'NONE' if not an admin of the acting company for detailed status.\r\n      -- More granular public status (like just 'ACCEPTED' or 'NONE') could be exposed differently.\r\n      -- The public count is a separate RPC.\r\n       SELECT status INTO v_status FROM public.company_connections c\r\n        WHERE \r\n            (c.requester_company_id = p_acting_company_id AND c.addressee_company_id = p_other_company_id) OR\r\n            (c.requester_company_id = p_other_company_id AND c.addressee_company_id = p_acting_company_id);\r\n        \r\n        IF v_status = 'ACCEPTED' THEN RETURN 'ACCEPTED'; END IF;\r\n        RETURN 'NONE'; -- Or 'UNKNOWN' if not admin of acting_company\r\n    END IF;\r\n\r\n    SELECT c.status, c.requester_company_id INTO v_status, v_requester_company_id\r\n    FROM public.company_connections c\r\n    WHERE \r\n        (c.requester_company_id = p_acting_company_id AND c.addressee_company_id = p_other_company_id) OR\r\n        (c.requester_company_id = p_other_company_id AND c.addressee_company_id = p_acting_company_id);\r\n\r\n    IF v_status IS NULL THEN\r\n        RETURN 'NONE';\r\n    END IF;\r\n\r\n    IF v_status = 'PENDING' THEN\r\n        IF v_requester_company_id = p_acting_company_id THEN RETURN 'PENDING_SENT'; ELSE RETURN 'PENDING_RECEIVED'; END IF;\r\n    ELSIF v_status = 'ACCEPTED' THEN\r\n        RETURN 'ACCEPTED';\r\n    ELSIF v_status = 'DECLINED' THEN\r\n        IF v_requester_company_id = p_acting_company_id THEN RETURN 'DECLINED_BY_THEM'; -- They declined acting company's request\r\n        ELSE RETURN 'DECLINED_BY_US'; -- Acting company declined their request\r\n        END IF;\r\n    ELSIF v_status = 'BLOCKED' THEN\r\n        RETURN 'BLOCKED'; -- Simplified\r\n    ELSE\r\n        RETURN 'NONE'; -- Should not happen\r\n    END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_connections",
+    "function_arguments": "p_company_id uuid",
+    "returns_type": "TABLE(connected_company_id uuid, name text, avatar_url text, industry text, connected_at timestamp with time zone)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_connections(p_company_id uuid)\n RETURNS TABLE(connected_company_id uuid, name text, avatar_url text, industry text, connected_at timestamp with time zone)\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    RETURN QUERY\r\n    SELECT\r\n        c.id AS connected_company_id,\r\n        c.name,\r\n        c.avatar_url,\r\n        c.industry,\r\n        cc.created_at AS connected_at -- Assuming 'created_at' is when the connection was established\r\n    FROM company_connections cc\r\n    JOIN companies_view c ON (cc.company1_id = p_company_id AND c.id = cc.company2_id) OR (cc.company2_id = p_company_id AND c.id = cc.company1_id)\r\n    WHERE (cc.company1_id = p_company_id OR cc.company2_id = p_company_id)\r\n      AND cc.status = 'CONNECTED'\r\n      AND c.id != p_company_id; -- Ensure we don't return the company itself\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_follow_status",
+    "function_arguments": "p_company_id uuid",
+    "returns_type": "boolean",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_follow_status(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\nAS $function$\r\n    SELECT EXISTS (\r\n        SELECT 1 FROM public.user_company_follows\r\n        WHERE user_id = auth.uid() AND company_id = p_company_id\r\n    );\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_network_count",
+    "function_arguments": "p_company_id uuid",
+    "returns_type": "integer",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": "Publicly returns the number of accepted connections for a company.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_network_count(p_company_id uuid)\n RETURNS integer\n LANGUAGE sql\n STABLE\n SET search_path TO 'public'\nAS $function$\r\n    SELECT COUNT(*)::INTEGER\r\n    FROM public.company_connections cc\r\n    WHERE (cc.requester_company_id = p_company_id OR cc.addressee_company_id = p_company_id)\r\n      AND cc.status = 'ACCEPTED';\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_network_details",
+    "function_arguments": "p_target_company_id uuid",
+    "returns_type": "TABLE(connection_id uuid, company_id uuid, name text, logo_url text, industry text, connected_since timestamp with time zone)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Returns details of companies connected to p_target_company_id, for its admins.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_network_details(p_target_company_id uuid)\n RETURNS TABLE(connection_id uuid, company_id uuid, name text, logo_url text, industry text, connected_since timestamp with time zone)\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\nBEGIN\r\n    IF NOT internal.is_company_admin(v_current_user_id, p_target_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the specified company to view network details.';\r\n    END IF;\r\n\r\n    RETURN QUERY\r\n    SELECT\r\n        cc.id AS connection_id,\r\n        comp.id AS company_id,\r\n        comp.name,\r\n        comp.logo_url,\r\n        comp.industry, -- Assuming industry is a direct column on companies table\r\n        cc.responded_at AS connected_since\r\n    FROM public.company_connections cc\r\n    JOIN public.companies comp ON \r\n        (cc.requester_company_id = p_target_company_id AND comp.id = cc.addressee_company_id) OR \r\n        (cc.addressee_company_id = p_target_company_id AND comp.id = cc.requester_company_id)\r\n    WHERE cc.status = 'ACCEPTED'\r\n      AND comp.deleted_at IS NULL -- Ensure connected company is not deleted\r\n    ORDER BY comp.name;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_company_verification_stats",
+    "function_arguments": "",
+    "returns_type": "TABLE(status text, count bigint)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_company_verification_stats()\n RETURNS TABLE(status text, count bigint)\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\n  SELECT internal.ensure_admin(); -- Call the new helper function\r\n\r\n  SELECT\r\n    COALESCE(verification_status, 'UNKNOWN') as status,\r\n    COUNT(*) as count\r\n  FROM\r\n    public.companies\r\n  GROUP BY\r\n    verification_status\r\n  ORDER BY\r\n    status;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_conversations",
+    "function_arguments": "p_current_user_id uuid",
+    "returns_type": "TABLE(other_user_id uuid, other_user_name text, other_user_avatar text, last_message_id uuid, last_message_content text, last_message_at timestamp with time zone, last_message_sender_id uuid, unread_count bigint)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_conversations(p_current_user_id uuid)\n RETURNS TABLE(other_user_id uuid, other_user_name text, other_user_avatar text, last_message_id uuid, last_message_content text, last_message_at timestamp with time zone, last_message_sender_id uuid, unread_count bigint)\n LANGUAGE sql\nAS $function$\r\n    WITH ranked_messages AS (\r\n        SELECT\r\n            m.id,\r\n            m.created_at,\r\n            m.content,\r\n            m.sender_id,\r\n            m.receiver_id,\r\n            m.read,\r\n            CASE\r\n                WHEN m.sender_id = p_current_user_id THEN m.receiver_id\r\n                ELSE m.sender_id\r\n            END AS other_user_id,\r\n            ROW_NUMBER() OVER (PARTITION BY CASE WHEN m.sender_id = p_current_user_id THEN m.receiver_id ELSE m.sender_id END ORDER BY m.created_at DESC) as rn\r\n        FROM\r\n            public.messages m\r\n        WHERE\r\n            m.sender_id = p_current_user_id OR m.receiver_id = p_current_user_id\r\n    )\r\n    SELECT\r\n        rm.other_user_id,\r\n        p.name AS other_user_name,\r\n        p.avatar_url AS other_user_avatar,\r\n        rm.id AS last_message_id,\r\n        rm.content AS last_message_content,\r\n        rm.created_at AS last_message_at,\r\n        rm.sender_id AS last_message_sender_id,\r\n        (SELECT COUNT(*) FROM public.messages unread_m WHERE unread_m.receiver_id = p_current_user_id AND unread_m.sender_id = rm.other_user_id AND unread_m.read = false) AS unread_count\r\n    FROM\r\n        ranked_messages rm\r\n    JOIN\r\n        public.profiles p ON rm.other_user_id = p.id\r\n    WHERE\r\n        rm.rn = 1\r\n    ORDER BY\r\n        rm.created_at DESC;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_cymk_suggestions",
+    "function_arguments": "p_requesting_user_id uuid, p_limit integer",
+    "returns_type": "TABLE(suggested_company_id uuid, company_name text, company_avatar_url text, company_industry text, score bigint, reason text)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": "Provides \"Companies You May Know\" suggestions based on companies followed by connections, with a fallback to recently created companies. Takes requesting user ID and a limit.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_cymk_suggestions(p_requesting_user_id uuid, p_limit integer DEFAULT 5)\n RETURNS TABLE(suggested_company_id uuid, company_name text, company_avatar_url text, company_industry text, score bigint, reason text)\n LANGUAGE sql\n STABLE\nAS $function$\r\nWITH\r\n  -- 1. Current user's direct connections\r\n  user_direct_connections AS (\r\n    SELECT connected_user_id FROM internal.get_user_connection_ids(p_requesting_user_id)\r\n  ),\r\n  -- 2. Companies followed by the user's connections\r\n  followed_companies_by_connections AS (\r\n    SELECT\r\n      ucf.company_id,\r\n      COUNT(DISTINCT udc.connected_user_id) AS connections_following_count\r\n    FROM user_direct_connections udc\r\n    JOIN public.user_company_follows ucf ON udc.connected_user_id = ucf.user_id\r\n    WHERE\r\n      ucf.company_id NOT IN (SELECT company_id FROM public.user_company_follows WHERE user_id = p_requesting_user_id) -- Exclude companies already followed by the requesting user\r\n      AND ucf.company_id NOT IN (SELECT id FROM public.companies WHERE owner_id = p_requesting_user_id)              -- Exclude companies owned by the requesting user\r\n    GROUP BY ucf.company_id\r\n  ),\r\n  -- 3. Ranked connection-based company suggestions\r\n  ranked_company_suggestions AS (\r\n    SELECT\r\n      fcc.company_id AS suggested_company_id,\r\n      c.name AS company_name,\r\n      c.avatar_url AS company_avatar_url,\r\n      c.industry as company_industry,\r\n      fcc.connections_following_count AS score,\r\n      CASE\r\n        WHEN fcc.connections_following_count = 1 THEN '1 connection follows'\r\n        ELSE fcc.connections_following_count || ' connections follow'\r\n      END AS reason,\r\n      1 AS priority -- Higher priority for connection-based suggestions\r\n    FROM followed_companies_by_connections fcc\r\n    JOIN public.companies c ON fcc.company_id = c.id\r\n    WHERE c.verification_status = 'TIER1_VERIFIED'\r\n    ORDER BY fcc.connections_following_count DESC, c.created_at DESC\r\n  ),\r\n  -- 4. Fallback: Recently created companies (if not enough from connections)\r\n  --    (Excluding those owned or followed by the requesting user)\r\n  recent_companies_fallback AS (\r\n    SELECT\r\n      c.id AS suggested_company_id,\r\n      c.name AS company_name,\r\n      c.avatar_url AS company_avatar_url,\r\n      c.industry AS company_industry,\r\n      0 AS score, -- Lower score for fallback\r\n      'New on CanDoBusiness' AS reason,\r\n      2 AS priority -- Lower priority\r\n    FROM public.companies c\r\n    WHERE\r\n      c.owner_id != p_requesting_user_id\r\n      AND c.id NOT IN (SELECT company_id FROM public.user_company_follows WHERE user_id = p_requesting_user_id)\r\n      AND c.id NOT IN (SELECT suggested_company_id FROM ranked_company_suggestions) -- Avoid duplicates\r\n      AND c.created_at >= (NOW() - INTERVAL '30 days')\r\n      AND c.verification_status = 'TIER1_VERIFIED'\r\n    ORDER BY c.created_at DESC\r\n  ),\r\n  -- 5. Combine and limit\r\n  combined_suggestions AS (\r\n    (SELECT suggested_company_id, company_name, company_avatar_url, company_industry, score, reason, priority FROM ranked_company_suggestions)\r\n    UNION ALL\r\n    (SELECT suggested_company_id, company_name, company_avatar_url, company_industry, score, reason, priority FROM recent_companies_fallback)\r\n  )\r\nSELECT cs.suggested_company_id, cs.company_name, cs.company_avatar_url, cs.company_industry, cs.score, cs.reason\r\nFROM (\r\n    SELECT *, ROW_NUMBER() OVER (PARTITION BY suggested_company_id ORDER BY priority ASC, score DESC, company_name ASC) as rn\r\n    FROM combined_suggestions\r\n) cs\r\nWHERE cs.rn = 1 -- Ensure unique suggestions\r\nORDER BY cs.priority ASC, cs.score DESC, cs.company_name ASC\r\nLIMIT p_limit;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_feed_posts",
+    "function_arguments": "p_user_id uuid, p_limit integer, p_offset integer, p_category post_category",
+    "returns_type": "TABLE(post_id uuid, post_content text, post_created_at timestamp with time zone, post_category post_category, post_media_urls text[], post_media_types text[], author_user_id uuid, author_name text, author_avatar_url text, author_subscription_tier text, company_id uuid, company_name text, company_avatar_url text, like_count bigint, comment_count bigint, bookmark_count bigint, is_liked_by_current_user boolean, is_bookmarked_by_current_user boolean, is_network_post integer)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_feed_posts(p_user_id uuid, p_limit integer DEFAULT 10, p_offset integer DEFAULT 0, p_category post_category DEFAULT NULL::post_category)\n RETURNS TABLE(post_id uuid, post_content text, post_created_at timestamp with time zone, post_category post_category, post_media_urls text[], post_media_types text[], author_user_id uuid, author_name text, author_avatar_url text, author_subscription_tier text, company_id uuid, company_name text, company_avatar_url text, like_count bigint, comment_count bigint, bookmark_count bigint, is_liked_by_current_user boolean, is_bookmarked_by_current_user boolean, is_network_post integer)\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n  RETURN QUERY\r\n  WITH post_stats AS (\r\n    SELECT\r\n      p.id,\r\n      COUNT(DISTINCT pl.user_id) as like_count,\r\n      COUNT(DISTINCT pc.id) as comment_count,\r\n      COUNT(DISTINCT pb.user_id) as bookmark_count,\r\n      bool_or(pl.user_id = p_user_id) as is_liked,\r\n      bool_or(pb.user_id = p_user_id) as is_bookmarked\r\n    FROM posts p\r\n    LEFT JOIN post_likes pl ON p.id = pl.post_id\r\n    LEFT JOIN post_comments pc ON p.id = pc.post_id\r\n    LEFT JOIN post_bookmarks pb ON p.id = pb.post_id\r\n    GROUP BY p.id\r\n  )\r\n  SELECT\r\n    p.id::UUID as post_id,\r\n    p.content as post_content,\r\n    p.created_at as post_created_at,\r\n    p.category as post_category,\r\n    p.media_urls as post_media_urls,\r\n    p.media_types as post_media_types,\r\n    prof.id::UUID as author_user_id,\r\n    prof.name as author_name,\r\n    prof.avatar_url as author_avatar_url,\r\n    p.author_subscription_tier,\r\n    p.company_id::UUID,\r\n    c.name as company_name,\r\n    c.avatar_url as company_avatar_url,\r\n    COALESCE(ps.like_count, 0) as like_count,\r\n    COALESCE(ps.comment_count, 0) as comment_count,\r\n    COALESCE(ps.bookmark_count, 0) as bookmark_count,\r\n    COALESCE(ps.is_liked, false) as is_liked_by_current_user,\r\n    COALESCE(ps.is_bookmarked, false) as is_bookmarked_by_current_user,\r\n    -- is_network_post logic with fixed ambiguous column reference\r\n    CASE\r\n      WHEN p.company_id IN (\r\n        SELECT ucf.company_id \r\n        FROM user_company_follows ucf\r\n        WHERE ucf.user_id = p_user_id\r\n      ) THEN 1\r\n      ELSE 0\r\n    END as is_network_post\r\n  FROM posts p\r\n  JOIN profiles prof ON p.user_id = prof.id\r\n  LEFT JOIN companies c ON p.company_id = c.id\r\n  LEFT JOIN post_stats ps ON p.id = ps.id\r\n  WHERE \r\n    p.status = 'visible'\r\n    AND (p_category IS NULL OR p.category = p_category)\r\n  ORDER BY p.created_at DESC\r\n  LIMIT p_limit\r\n  OFFSET p_offset;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_followed_companies",
+    "function_arguments": "",
+    "returns_type": "SETOF user_company_follows",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_followed_companies()\n RETURNS SETOF user_company_follows\n LANGUAGE sql\n STABLE SECURITY DEFINER\nAS $function$\r\n    SELECT * FROM public.user_company_follows WHERE user_id = auth.uid();\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_pending_company_connection_requests",
+    "function_arguments": "p_for_company_id uuid",
+    "returns_type": "SETOF company_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Fetches incoming pending connection requests for p_for_company_id, for its admins.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_pending_company_connection_requests(p_for_company_id uuid)\n RETURNS SETOF company_connections\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := auth.uid(); -- Use auth.uid() directly as in the wrapper\r\nBEGIN\r\n    -- Use the public wrapper for the admin check\r\n    IF NOT public.check_if_user_is_company_admin(v_current_user_id, p_for_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the specified company.';\r\n    END IF;\r\n\r\n    RETURN QUERY\r\n    SELECT cc.* \r\n    FROM public.company_connections cc\r\n    WHERE cc.addressee_company_id = p_for_company_id AND cc.status = 'PENDING'\r\n    ORDER BY cc.requested_at DESC;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_pending_user_connection_requests",
+    "function_arguments": "",
+    "returns_type": "SETOF user_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Fetches all incoming pending connection requests for the current user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_pending_user_connection_requests()\n RETURNS SETOF user_connections\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\n    SELECT uc.* \r\n    FROM public.user_connections uc\r\n    WHERE uc.addressee_id = internal.get_current_user_id() AND uc.status = 'PENDING'\r\n    ORDER BY uc.requested_at DESC;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_post_comments_threaded",
+    "function_arguments": "p_post_id uuid",
+    "returns_type": "TABLE(id uuid, created_at timestamp with time zone, content text, parent_comment_id uuid, user_id uuid, user_name text, user_avatar_url text, user_email text, depth integer, sort_path timestamp with time zone[])",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_post_comments_threaded(p_post_id uuid)\n RETURNS TABLE(id uuid, created_at timestamp with time zone, content text, parent_comment_id uuid, user_id uuid, user_name text, user_avatar_url text, user_email text, depth integer, sort_path timestamp with time zone[])\n LANGUAGE plpgsql\n STABLE\nAS $function$\r\nBEGIN\r\n    RETURN QUERY\r\n    WITH RECURSIVE comment_thread AS (\r\n        -- Anchor member: top-level comments\r\n        SELECT\r\n            pc.id,\r\n            pc.created_at,\r\n            pc.content,\r\n            pc.parent_comment_id,\r\n            pc.user_id,\r\n            p.name as user_name,\r\n            p.avatar_url as user_avatar_url,\r\n            p.email as user_email,\r\n            0 as depth,\r\n            ARRAY[pc.created_at] as sort_path\r\n        FROM\r\n            public.post_comments pc\r\n        JOIN\r\n            public.profiles p ON pc.user_id = p.id\r\n        WHERE\r\n            pc.post_id = p_post_id AND pc.parent_comment_id IS NULL\r\n\r\n        UNION ALL\r\n\r\n        -- Recursive member: replies to comments\r\n        SELECT\r\n            pc.id,\r\n            pc.created_at,\r\n            pc.content,\r\n            pc.parent_comment_id,\r\n            pc.user_id,\r\n            p.name as user_name,\r\n            p.avatar_url as user_avatar_url,\r\n            p.email as user_email,\r\n            ct.depth + 1,\r\n            ct.sort_path || pc.created_at\r\n        FROM\r\n            public.post_comments pc\r\n        JOIN\r\n            public.profiles p ON pc.user_id = p.id\r\n        JOIN\r\n            comment_thread ct ON pc.parent_comment_id = ct.id\r\n    )\r\n    SELECT\r\n        ct.id,\r\n        ct.created_at,\r\n        ct.content,\r\n        ct.parent_comment_id,\r\n        ct.user_id,\r\n        ct.user_name,\r\n        ct.user_avatar_url,\r\n        ct.user_email,\r\n        ct.depth,\r\n        ct.sort_path\r\n    FROM\r\n        comment_thread ct\r\n    ORDER BY\r\n        ct.sort_path;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_pymk_suggestions",
+    "function_arguments": "p_requesting_user_id uuid, p_limit integer",
+    "returns_type": "TABLE(suggested_user_id uuid, user_name text, user_avatar_url text, score bigint, reason text)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": "Provides \"People You May Know\" suggestions based on 2nd-degree connections, with a fallback to recently joined users. Takes requesting user ID and a limit.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_pymk_suggestions(p_requesting_user_id uuid, p_limit integer DEFAULT 5)\n RETURNS TABLE(suggested_user_id uuid, user_name text, user_avatar_url text, score bigint, reason text)\n LANGUAGE sql\n STABLE\nAS $function$\r\nWITH\r\n  -- 1. Current user's direct connections\r\n  user_direct_connections AS (\r\n    SELECT connected_user_id FROM internal.get_user_connection_ids(p_requesting_user_id)\r\n  ),\r\n  -- 2. Connections of the current user's direct connections (2nd degree)\r\n  second_degree_connections AS (\r\n    SELECT\r\n      sdc.connected_user_id AS potential_suggestion_id,\r\n      COUNT(DISTINCT udc.connected_user_id) AS mutual_connections_count -- Count of mutual 1st degree connections\r\n    FROM user_direct_connections udc\r\n    JOIN internal.get_user_connection_ids(udc.connected_user_id) sdc ON TRUE -- sdc.connected_user_id is the 2nd degree\r\n    WHERE\r\n      sdc.connected_user_id != p_requesting_user_id                      -- Not the requesting user\r\n      AND sdc.connected_user_id NOT IN (SELECT connected_user_id FROM user_direct_connections) -- Not already a direct connection\r\n    GROUP BY sdc.connected_user_id\r\n  ),\r\n  -- 3. Ranked 2nd-degree connections\r\n  ranked_suggestions AS (\r\n    SELECT\r\n      sdc.potential_suggestion_id,\r\n      p.name AS user_name,\r\n      p.avatar_url AS user_avatar_url,\r\n      sdc.mutual_connections_count AS score,\r\n      CASE\r\n        WHEN sdc.mutual_connections_count = 1 THEN '1 mutual connection'\r\n        ELSE sdc.mutual_connections_count || ' mutual connections'\r\n      END AS reason,\r\n      1 as priority -- Higher priority for connection-based suggestions\r\n    FROM second_degree_connections sdc\r\n    JOIN public.profiles p ON sdc.potential_suggestion_id = p.id\r\n    ORDER BY sdc.mutual_connections_count DESC, p.created_at DESC -- Prioritize by mutual connections, then by newest profile\r\n  ),\r\n  -- 4. Fallback: Recently joined users (if not enough from connections)\r\n  --    (Excluding self and direct connections)\r\n  recent_users_fallback AS (\r\n    SELECT\r\n      p.id AS potential_suggestion_id,\r\n      p.name AS user_name,\r\n      p.avatar_url AS user_avatar_url,\r\n      0 AS score, -- Lower score for fallback\r\n      'Recently joined CanDo' AS reason,\r\n      2 as priority -- Lower priority for fallback suggestions\r\n    FROM public.profiles p\r\n    WHERE\r\n      p.id != p_requesting_user_id\r\n      AND p.id NOT IN (SELECT connected_user_id FROM user_direct_connections)\r\n      AND p.id NOT IN (SELECT potential_suggestion_id FROM ranked_suggestions) -- Avoid duplicates if a recent user was somehow a 2nd degree connection\r\n      AND p.created_at >= (NOW() - INTERVAL '30 days') -- Define \"recent\"\r\n    ORDER BY p.created_at DESC\r\n  ),\r\n  -- 5. Combine and limit\r\n  combined_suggestions AS (\r\n    (SELECT potential_suggestion_id, user_name, user_avatar_url, score, reason, priority FROM ranked_suggestions)\r\n    UNION ALL\r\n    (SELECT potential_suggestion_id, user_name, user_avatar_url, score, reason, priority FROM recent_users_fallback)\r\n  )\r\nSELECT cs.potential_suggestion_id AS suggested_user_id, cs.user_name, cs.user_avatar_url, cs.score, cs.reason\r\nFROM (\r\n    SELECT *, ROW_NUMBER() OVER (PARTITION BY potential_suggestion_id ORDER BY priority ASC, score DESC, user_name ASC) as rn\r\n    FROM combined_suggestions\r\n) cs\r\nWHERE cs.rn = 1 -- Ensure unique suggestions if somehow duplicated between primary and fallback\r\nORDER BY cs.priority ASC, cs.score DESC, cs.user_name ASC -- Order by priority, then score, then name\r\nLIMIT p_limit;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_rfq_statistics",
+    "function_arguments": "p_rfq_id uuid",
+    "returns_type": "TABLE(total_quotes integer, avg_quote_amount numeric, min_quote_amount numeric, max_quote_amount numeric, avg_delivery_time interval)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_rfq_statistics(p_rfq_id uuid)\n RETURNS TABLE(total_quotes integer, avg_quote_amount numeric, min_quote_amount numeric, max_quote_amount numeric, avg_delivery_time interval)\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n    SELECT \n        COUNT(*)::INTEGER as total_quotes,\n        AVG(amount) as avg_quote_amount,\n        MIN(amount) as min_quote_amount,\n        MAX(amount) as max_quote_amount,\n        AVG(CASE \n            WHEN delivery_time ~ '^[0-9]+ days$' \n            THEN (delivery_time::TEXT)::INTERVAL \n            ELSE NULL \n        END) as avg_delivery_time\n    FROM public.quotes\n    WHERE rfq_id = p_rfq_id AND status = 'submitted';\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_sent_company_connection_requests",
+    "function_arguments": "p_from_company_id uuid",
+    "returns_type": "SETOF company_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Fetches outgoing pending connection requests from p_from_company_id, for its admins.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_sent_company_connection_requests(p_from_company_id uuid)\n RETURNS SETOF company_connections\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := auth.uid(); -- Use auth.uid() directly as in the wrapper\r\nBEGIN\r\n    -- Use the public wrapper for the admin check\r\n    IF NOT public.check_if_user_is_company_admin(v_current_user_id, p_from_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the specified company.';\r\n    END IF;\r\n\r\n    RETURN QUERY\r\n    SELECT cc.*\r\n    FROM public.company_connections cc\r\n    WHERE cc.requester_company_id = p_from_company_id AND cc.status = 'PENDING'\r\n    ORDER BY cc.requested_at DESC;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_sent_user_connection_requests",
+    "function_arguments": "",
+    "returns_type": "SETOF user_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Fetches all outgoing pending connection requests made by the current user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_sent_user_connection_requests()\n RETURNS SETOF user_connections\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\n    SELECT uc.*\r\n    FROM public.user_connections uc\r\n    WHERE uc.requester_id = internal.get_current_user_id() AND uc.status = 'PENDING'\r\n    ORDER BY uc.requested_at DESC;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_user_analytics",
+    "function_arguments": "p_user_id uuid, p_start_date timestamp with time zone, p_end_date timestamp with time zone",
+    "returns_type": "TABLE(event_type text, event_count bigint, first_occurrence timestamp with time zone, last_occurrence timestamp with time zone)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_user_analytics(p_user_id uuid, p_start_date timestamp with time zone DEFAULT (now() - '30 days'::interval), p_end_date timestamp with time zone DEFAULT now())\n RETURNS TABLE(event_type text, event_count bigint, first_occurrence timestamp with time zone, last_occurrence timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nBEGIN\r\n  -- Check if user has Pro subscription\r\n  IF NOT EXISTS (\r\n    SELECT 1 FROM user_subscriptions\r\n    WHERE user_id = p_user_id\r\n    AND tier = 'PRO'\r\n    AND status IN ('active', 'trialing')\r\n  ) THEN\r\n    RETURN;\r\n  END IF;\r\n\r\n  RETURN QUERY\r\n  SELECT \r\n    ae.event_type,\r\n    COUNT(*) as event_count,\r\n    MIN(ae.created_at) as first_occurrence,\r\n    MAX(ae.created_at) as last_occurrence\r\n  FROM analytics_events ae\r\n  WHERE ae.user_id = p_user_id\r\n  AND ae.created_at BETWEEN p_start_date AND p_end_date\r\n  GROUP BY ae.event_type\r\n  ORDER BY event_count DESC;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_user_companies",
+    "function_arguments": "user_id_param uuid",
+    "returns_type": "SETOF companies_view",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_user_companies(user_id_param uuid)\n RETURNS SETOF companies_view\n LANGUAGE sql\n STABLE\nAS $function$\r\n  SELECT *\r\n  FROM public.companies_view\r\n  WHERE owner_id = user_id_param;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_user_connection_status_with",
+    "function_arguments": "p_other_user_id uuid",
+    "returns_type": "text",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Checks the connection status (e.g., PENDING_SENT, ACCEPTED) between the current user and another user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_user_connection_status_with(p_other_user_id uuid)\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nSELECT\r\n    CASE\r\n        WHEN c.status = 'PENDING' AND c.requester_id = internal.get_current_user_id() THEN 'PENDING_SENT'\r\n        WHEN c.status = 'PENDING' AND c.addressee_id = internal.get_current_user_id() THEN 'PENDING_RECEIVED'\r\n        WHEN c.status = 'ACCEPTED' THEN 'ACCEPTED'\r\n        WHEN c.status = 'DECLINED' AND c.requester_id = internal.get_current_user_id() THEN 'DECLINED_BY_THEM' -- They declined my request\r\n        WHEN c.status = 'DECLINED' AND c.addressee_id = internal.get_current_user_id() THEN 'DECLINED_BY_ME' -- I declined their request\r\n        WHEN c.status = 'BLOCKED' THEN 'BLOCKED' -- Simplified: assumes if a block record exists, it's 'BLOCKED'\r\n        ELSE 'NONE'\r\n    END\r\nFROM public.user_connections c\r\nWHERE \r\n    (c.requester_id = internal.get_current_user_id() AND c.addressee_id = p_other_user_id) OR\r\n    (c.requester_id = p_other_user_id AND c.addressee_id = internal.get_current_user_id());\r\n-- If no row matches, this will return NULL, which the frontend should also treat as 'NONE'.\r\n-- Consider COALESCE( (SELECT ...), 'NONE') if a non-NULL value is always required.\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_user_network",
+    "function_arguments": "p_target_user_id uuid",
+    "returns_type": "TABLE(connection_id uuid, user_id uuid, name text, avatar_url text, connected_since timestamp with time zone)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "STABLE",
+    "comment": "Fetches the profiles of users connected to the specified p_target_user_id.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_user_network(p_target_user_id uuid)\n RETURNS TABLE(connection_id uuid, user_id uuid, name text, avatar_url text, connected_since timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\n    SELECT\r\n        uc.id AS connection_id,\r\n        p.id AS user_id,\r\n        p.name,\r\n        p.avatar_url,\r\n        uc.responded_at AS connected_since\r\n    FROM public.user_connections uc\r\n    JOIN public.profiles p ON \r\n        (uc.requester_id = p_target_user_id AND p.id = uc.addressee_id) OR \r\n        (uc.addressee_id = p_target_user_id AND p.id = uc.requester_id)\r\n    WHERE uc.status = 'ACCEPTED'\r\n    ORDER BY p.name;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_user_notifications",
+    "function_arguments": "p_limit integer, p_page_number integer",
+    "returns_type": "TABLE(id uuid, user_id uuid, title text, message text, link_to text, is_read boolean, notification_type notification_type_enum, created_at timestamp with time zone, unread_count bigint)",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": "Fetches paginated notifications for the current user and their total unread notification count.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.get_user_notifications(p_limit integer DEFAULT 10, p_page_number integer DEFAULT 1)\n RETURNS TABLE(id uuid, user_id uuid, title text, message text, link_to text, is_read boolean, notification_type notification_type_enum, created_at timestamp with time zone, unread_count bigint)\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := auth.uid();\r\n    v_offset INT;\r\n    v_total_unread BIGINT;\r\nBEGIN\r\n    v_offset := (GREATEST(p_page_number, 1) - 1) * p_limit;\r\n\r\n    SELECT COUNT(*) INTO v_total_unread\r\n    FROM public.user_notifications un\r\n    WHERE un.user_id = v_current_user_id AND un.is_read = FALSE;\r\n\r\n    RETURN QUERY\r\n    SELECT\r\n        un.id,\r\n        un.user_id,\r\n        un.title,\r\n        un.message,\r\n        un.link_to,\r\n        un.is_read,\r\n        un.notification_type,\r\n        un.created_at,\r\n        v_total_unread AS unread_count\r\n    FROM public.user_notifications un\r\n    WHERE un.user_id = v_current_user_id\r\n    ORDER BY un.created_at DESC\r\n    LIMIT p_limit\r\n    OFFSET v_offset;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gin_extract_query_trgm",
+    "function_arguments": "text, internal, smallint, internal, internal, internal, internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gin_extract_query_trgm(text, internal, smallint, internal, internal, internal, internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gin_extract_query_trgm$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gin_extract_value_trgm",
+    "function_arguments": "text, internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gin_extract_value_trgm(text, internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gin_extract_value_trgm$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gin_trgm_consistent",
+    "function_arguments": "internal, smallint, text, integer, internal, internal, internal, internal",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gin_trgm_consistent(internal, smallint, text, integer, internal, internal, internal, internal)\n RETURNS boolean\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gin_trgm_consistent$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gin_trgm_triconsistent",
+    "function_arguments": "internal, smallint, text, integer, internal, internal, internal",
+    "returns_type": "\"char\"",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gin_trgm_triconsistent(internal, smallint, text, integer, internal, internal, internal)\n RETURNS \"char\"\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gin_trgm_triconsistent$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_compress",
+    "function_arguments": "internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_compress(internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_compress$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_consistent",
+    "function_arguments": "internal, text, smallint, oid, internal",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_consistent(internal, text, smallint, oid, internal)\n RETURNS boolean\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_consistent$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_decompress",
+    "function_arguments": "internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_decompress(internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_decompress$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_distance",
+    "function_arguments": "internal, text, smallint, oid, internal",
+    "returns_type": "double precision",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_distance(internal, text, smallint, oid, internal)\n RETURNS double precision\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_distance$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_in",
+    "function_arguments": "cstring",
+    "returns_type": "gtrgm",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_in(cstring)\n RETURNS gtrgm\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_in$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_options",
+    "function_arguments": "internal",
+    "returns_type": "void",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_options(internal)\n RETURNS void\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE\nAS '$libdir/pg_trgm', $function$gtrgm_options$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_out",
+    "function_arguments": "gtrgm",
+    "returns_type": "cstring",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_out(gtrgm)\n RETURNS cstring\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_out$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_penalty",
+    "function_arguments": "internal, internal, internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_penalty(internal, internal, internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_penalty$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_picksplit",
+    "function_arguments": "internal, internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_picksplit(internal, internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_picksplit$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_same",
+    "function_arguments": "gtrgm, gtrgm, internal",
+    "returns_type": "internal",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_same(gtrgm, gtrgm, internal)\n RETURNS internal\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_same$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gtrgm_union",
+    "function_arguments": "internal, internal",
+    "returns_type": "gtrgm",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.gtrgm_union(internal, internal)\n RETURNS gtrgm\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$gtrgm_union$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "handle_updated_at",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.handle_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = CURRENT_TIMESTAMP;\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "internal_upsert_profile_for_user",
+    "function_arguments": "p_user_id uuid, p_email text, p_name text, p_avatar_url text",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.internal_upsert_profile_for_user(p_user_id uuid, p_email text, p_name text, p_avatar_url text DEFAULT NULL::text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nBEGIN\r\n    -- Ensure search_path is set to public for profile operations\r\n    SET search_path = public;\r\n\r\n    INSERT INTO public.profiles (id, email, name, avatar_url, updated_at, created_at)\r\n    VALUES (\r\n        p_user_id,\r\n        p_email,\r\n        p_name,\r\n        p_avatar_url,\r\n        NOW(),\r\n        NOW() -- Set created_at on initial insert\r\n    )\r\n    ON CONFLICT (id) DO UPDATE SET\r\n        email = EXCLUDED.email,\r\n        name = EXCLUDED.name,\r\n        avatar_url = EXCLUDED.avatar_url,\r\n        updated_at = NOW();\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "mark_all_notifications_as_read",
+    "function_arguments": "",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": "Marks all unread notifications as read for the current user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.mark_all_notifications_as_read()\n RETURNS boolean\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := auth.uid();\r\nBEGIN\r\n    UPDATE public.user_notifications\r\n    SET is_read = TRUE, updated_at = now()\r\n    WHERE user_id = v_current_user_id AND is_read = FALSE;\r\n    \r\n    RETURN FOUND; -- FOUND is a special variable in PL/pgSQL that is true if the preceding DML command affected at least one row.\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "mark_notification_as_read",
+    "function_arguments": "p_notification_id uuid",
+    "returns_type": "SETOF user_notifications",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": "Marks a specific notification as read for the current user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.mark_notification_as_read(p_notification_id uuid)\n RETURNS SETOF user_notifications\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := auth.uid();\r\nBEGIN\r\n    RETURN QUERY\r\n    UPDATE public.user_notifications\r\n    SET is_read = TRUE, updated_at = now()\r\n    WHERE id = p_notification_id AND user_id = v_current_user_id\r\n    RETURNING *;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "remove_company_connection",
+    "function_arguments": "p_acting_company_id uuid, p_other_company_id uuid",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Removes an established connection between two companies, initiated by an admin of p_acting_company_id.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.remove_company_connection(p_acting_company_id uuid, p_other_company_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\n    v_deleted_count INTEGER;\r\nBEGIN\r\n    IF NOT internal.is_company_admin(v_current_user_id, p_acting_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the acting company to remove connection.';\r\n    END IF;\r\n\r\n    -- RLS policy handles actual delete permission check\r\n    DELETE FROM public.company_connections\r\n    WHERE status = 'ACCEPTED' AND\r\n          ((requester_company_id = p_acting_company_id AND addressee_company_id = p_other_company_id) OR\r\n           (requester_company_id = p_other_company_id AND addressee_company_id = p_acting_company_id));\r\n    \r\n    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;\r\n    IF v_deleted_count = 0 THEN\r\n        RAISE EXCEPTION 'No accepted connection found to remove or user lacks privileges for one of the companies.';\r\n    END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "remove_user_connection",
+    "function_arguments": "p_other_user_id uuid",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Removes an established connection between the current user and the specified other user.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.remove_user_connection(p_other_user_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\n    v_deleted_count INTEGER;\r\nBEGIN\r\n    -- RLS policy \"Users can remove an accepted connection\" will check:\r\n    -- (requester_id = auth.uid() OR addressee_id = auth.uid()) AND status = 'ACCEPTED'\r\n    DELETE FROM public.user_connections\r\n    WHERE status = 'ACCEPTED' AND\r\n          ((requester_id = v_current_user_id AND addressee_id = p_other_user_id) OR\r\n           (requester_id = p_other_user_id AND addressee_id = v_current_user_id));\r\n\r\n    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;\r\n    IF v_deleted_count = 0 THEN\r\n        RAISE EXCEPTION 'No accepted connection found with this user to remove, or deletion failed due to RLS.';\r\n    END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "request_company_tier1_verification",
+    "function_arguments": "p_company_id uuid, p_business_number text, p_public_presence_links text[], p_self_attestation_completed boolean",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.request_company_tier1_verification(p_company_id uuid, p_business_number text, p_public_presence_links text[], p_self_attestation_completed boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n  target_company public.companies%ROWTYPE;\r\nBEGIN\r\n  -- Fetch the company to check ownership and current status\r\n  SELECT * INTO target_company FROM public.companies WHERE id = p_company_id;\r\n\r\n  IF NOT FOUND THEN\r\n    RAISE EXCEPTION 'Company with ID % not found.', p_company_id;\r\n  END IF;\r\n\r\n  -- Check if the calling user is the owner of the company\r\n  IF target_company.owner_id IS DISTINCT FROM auth.uid() THEN\r\n    RAISE EXCEPTION 'User % is not authorized to request verification for company %.', auth.uid(), p_company_id;\r\n  END IF;\r\n\r\n  -- Check if the company is eligible for Tier 1 application\r\n  IF target_company.verification_status <> 'UNVERIFIED' AND target_company.verification_status <> 'TIER1_REJECTED' THEN\r\n     RAISE EXCEPTION 'Company % is not eligible for a new Tier 1 verification application. Current status: %.', target_company.name, target_company.verification_status;\r\n  END IF;\r\n\r\n  -- Perform the update\r\n  UPDATE public.companies\r\n  SET\r\n    business_number = p_business_number,\r\n    public_presence_links = p_public_presence_links,\r\n    self_attestation_completed = p_self_attestation_completed,\r\n    verification_status = 'TIER1_PENDING' -- Set to pending\r\n  WHERE\r\n    id = p_company_id;\r\n\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "request_company_tier2_verification",
+    "function_arguments": "p_company_id uuid, p_tier2_document_type text, p_tier2_document_filename text, p_tier2_document_storage_path text",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.request_company_tier2_verification(p_company_id uuid, p_tier2_document_type text, p_tier2_document_filename text, p_tier2_document_storage_path text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n  target_company public.companies%ROWTYPE;\r\nBEGIN\r\n  -- Fetch the company to check ownership and current status\r\n  SELECT * INTO target_company FROM public.companies WHERE id = p_company_id;\r\n\r\n  IF NOT FOUND THEN\r\n    RAISE EXCEPTION 'Company with ID % not found.', p_company_id;\r\n  END IF;\r\n\r\n  -- Check if the calling user is the owner of the company\r\n  IF target_company.owner_id IS DISTINCT FROM auth.uid() THEN\r\n    RAISE EXCEPTION 'User % is not authorized to request Tier 2 verification for company %.', auth.uid(), p_company_id;\r\n  END IF;\r\n\r\n  -- Check if the company is eligible for Tier 2 application\r\n  IF target_company.verification_status <> 'TIER1_VERIFIED' THEN\r\n     RAISE EXCEPTION 'Company % is not eligible for Tier 2 verification. Company must be Tier 1 Verified. Current status: %.', target_company.name, target_company.verification_status;\r\n  END IF;\r\n\r\n  -- Validate provided document details (basic checks)\r\n  IF p_tier2_document_type IS NULL OR trim(p_tier2_document_type) = '' THEN\r\n    RAISE EXCEPTION 'Tier 2 document type must be provided.';\r\n  END IF;\r\n  IF p_tier2_document_filename IS NULL OR trim(p_tier2_document_filename) = '' THEN\r\n    RAISE EXCEPTION 'Tier 2 document filename must be provided.';\r\n  END IF;\r\n  IF p_tier2_document_storage_path IS NULL OR trim(p_tier2_document_storage_path) = '' THEN\r\n    RAISE EXCEPTION 'Tier 2 document storage path must be provided.';\r\n  END IF;\r\n\r\n  -- Perform the update to request Tier 2 verification and store document details\r\n  UPDATE public.companies\r\n  SET\r\n    verification_status = 'TIER2_PENDING', -- Set to Tier 2 pending\r\n    tier2_document_type = p_tier2_document_type,\r\n    tier2_document_filename = p_tier2_document_filename,\r\n    tier2_document_storage_path = p_tier2_document_storage_path,\r\n    tier2_document_uploaded_at = timezone('utc'::text, now())\r\n  WHERE\r\n    id = p_company_id;\r\n\r\n  RAISE NOTICE 'User % has successfully requested Tier 2 verification for company % (ID: %). Document: %, Path: %. Status set to TIER2_PENDING.', \r\n    auth.uid(), target_company.name, p_company_id, p_tier2_document_filename, p_tier2_document_storage_path;\r\n\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "respond_company_connection_request",
+    "function_arguments": "p_request_id uuid, p_response text",
+    "returns_type": "company_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Allows an admin of the addressee company to accept or decline a pending connection request.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.respond_company_connection_request(p_request_id uuid, p_response text)\n RETURNS company_connections\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\n    v_connection public.company_connections;\r\n    v_addressee_company_id UUID;\r\n    v_new_status public.connection_status_enum;\r\nBEGIN\r\n    SELECT cc.addressee_company_id INTO v_addressee_company_id\r\n    FROM public.company_connections cc\r\n    WHERE cc.id = p_request_id;\r\n\r\n    IF v_addressee_company_id IS NULL THEN\r\n        RAISE EXCEPTION 'Connection request not found.';\r\n    END IF;\r\n\r\n    IF NOT internal.is_company_admin(v_current_user_id, v_addressee_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the company to respond.';\r\n    END IF;\r\n\r\n    IF lower(p_response) = 'accept' THEN\r\n        v_new_status := 'ACCEPTED';\r\n    ELSIF lower(p_response) = 'decline' THEN\r\n        v_new_status := 'DECLINED';\r\n    ELSE\r\n        RAISE EXCEPTION 'Invalid response. Must be \"accept\" or \"decline\".';\r\n    END IF;\r\n\r\n    -- RLS policy handles actual update permission check\r\n    UPDATE public.company_connections\r\n    SET status = v_new_status, responded_at = NOW()\r\n    WHERE id = p_request_id AND status = 'PENDING' -- RLS also checks addressee_company_id link to user\r\n    RETURNING * INTO v_connection;\r\n\r\n    IF v_connection IS NULL THEN\r\n        RAISE EXCEPTION 'Failed to update connection request. It might not be pending or not address your company.';\r\n    END IF;\r\n\r\n    RETURN v_connection;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "respond_user_connection_request",
+    "function_arguments": "p_request_id uuid, p_response text",
+    "returns_type": "user_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Allows the current user (addressee) to accept or decline a pending connection request.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.respond_user_connection_request(p_request_id uuid, p_response text)\n RETURNS user_connections\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_addressee_id UUID := internal.get_current_user_id();\r\n    v_connection public.user_connections;\r\n    v_new_status public.connection_status_enum;\r\nBEGIN\r\n    IF lower(p_response) = 'accept' THEN\r\n        v_new_status := 'ACCEPTED';\r\n    ELSIF lower(p_response) = 'decline' THEN\r\n        v_new_status := 'DECLINED';\r\n    ELSE\r\n        RAISE EXCEPTION 'Invalid response. Must be \"accept\" or \"decline\".';\r\n    END IF;\r\n\r\n    -- RLS policy \"Addressees can respond to pending connection requests\" will check:\r\n    -- addressee_id = auth.uid() AND status = 'PENDING'\r\n    -- AND on update: status IN ('ACCEPTED', 'DECLINED') AND responded_at IS NOT NULL\r\n    -- So, we set responded_at here.\r\n    UPDATE public.user_connections\r\n    SET status = v_new_status, responded_at = NOW()\r\n    WHERE id = p_request_id AND addressee_id = v_addressee_id AND status = 'PENDING'\r\n    RETURNING * INTO v_connection;\r\n\r\n    IF v_connection IS NULL THEN\r\n        RAISE EXCEPTION 'Connection request not found, not pending, or you are not the recipient.';\r\n    END IF;\r\n\r\n    RETURN v_connection;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "send_company_connection_request",
+    "function_arguments": "p_acting_company_id uuid, p_target_company_id uuid",
+    "returns_type": "company_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Sends a connection request from p_acting_company_id to p_target_company_id, initiated by an admin of the acting company.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.send_company_connection_request(p_acting_company_id uuid, p_target_company_id uuid)\n RETURNS company_connections\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_current_user_id UUID := internal.get_current_user_id();\r\n    v_existing_connection public.company_connections;\r\n    v_new_connection public.company_connections;\r\nBEGIN\r\n    IF p_acting_company_id = p_target_company_id THEN\r\n        RAISE EXCEPTION 'Cannot send a connection request from a company to itself.';\r\n    END IF;\r\n\r\n    IF NOT internal.is_company_admin(v_current_user_id, p_acting_company_id) THEN\r\n        RAISE EXCEPTION 'User does not have administrative privileges for the acting company.';\r\n    END IF;\r\n\r\n    IF NOT EXISTS (SELECT 1 FROM public.companies WHERE id = p_target_company_id AND deleted_at IS NULL AND (tier_1_verified_at IS NOT NULL OR tier_2_verified_at IS NOT NULL)) THEN\r\n        RAISE EXCEPTION 'Target company does not exist, is not verified, or has been deleted.';\r\n    END IF;\r\n    \r\n    IF NOT EXISTS (SELECT 1 FROM public.companies WHERE id = p_acting_company_id AND deleted_at IS NULL AND (tier_1_verified_at IS NOT NULL OR tier_2_verified_at IS NOT NULL)) THEN\r\n        RAISE EXCEPTION 'Acting company does not exist, is not verified, or has been deleted.';\r\n    END IF;\r\n\r\n    -- RLS on company_connections handles insert check for admin privileges of requester_company_id\r\n    INSERT INTO public.company_connections (requester_company_id, addressee_company_id, requested_by_user_id, status, requested_at)\r\n    VALUES (p_acting_company_id, p_target_company_id, v_current_user_id, 'PENDING', NOW())\r\n    RETURNING * INTO v_new_connection;\r\n\r\n    RETURN v_new_connection;\r\nEXCEPTION\r\n    WHEN unique_violation THEN\r\n        SELECT * INTO v_existing_connection FROM public.company_connections\r\n        WHERE requester_company_id = p_acting_company_id AND addressee_company_id = p_target_company_id;\r\n        \r\n        IF v_existing_connection.status = 'PENDING' THEN\r\n            RAISE EXCEPTION 'A connection request is already pending with this company.';\r\n        ELSIF v_existing_connection.status = 'ACCEPTED' THEN\r\n            RAISE EXCEPTION 'Your company is already connected with this company.';\r\n        ELSIF v_existing_connection.status = 'DECLINED' THEN\r\n            RAISE EXCEPTION 'Your company''s previous connection request was declined.';\r\n        ELSIF v_existing_connection.status = 'BLOCKED' THEN\r\n            RAISE EXCEPTION 'Unable to send connection request due to a block.';\r\n        ELSE\r\n            RAISE EXCEPTION 'A connection record already exists with this company (status: %).', v_existing_connection.status;\r\n        END IF;\r\n    WHEN OTHERS THEN\r\n        RAISE;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "send_user_connection_request",
+    "function_arguments": "p_addressee_id uuid, p_message text",
+    "returns_type": "user_connections",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": "Sends a connection request from the current user to the target addressee_id.",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.send_user_connection_request(p_addressee_id uuid, p_message text DEFAULT NULL::text)\n RETURNS user_connections\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'internal'\nAS $function$\r\nDECLARE\r\n    v_requester_id UUID := internal.get_current_user_id();\r\n    v_existing_connection public.user_connections;\r\n    v_new_connection public.user_connections;\r\nBEGIN\r\n    IF v_requester_id = p_addressee_id THEN\r\n        RAISE EXCEPTION 'Cannot send a connection request to yourself.';\r\n    END IF;\r\n\r\n    -- Check if an identical pending or accepted request already exists\r\n    -- The unique constraint (requester_id, addressee_id) handles this partially.\r\n    -- If a DECLINED or BLOCKED request exists, this function might need to decide whether to allow a new PENDING one.\r\n    -- For now, assume the unique constraint will prevent re-requesting if any record exists.\r\n    -- To allow re-request after DECLINED, the unique constraint would need to be partial or an old record deleted.\r\n\r\n    -- Check if target user exists\r\n    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_addressee_id) THEN\r\n        RAISE EXCEPTION 'Target user does not exist.';\r\n    END IF;\r\n\r\n    -- Let RLS on user_connections handle the insert check for requester_id = auth.uid()\r\n    INSERT INTO public.user_connections (requester_id, addressee_id, notes, status, requested_at)\r\n    VALUES (v_requester_id, p_addressee_id, p_message, 'PENDING', NOW())\r\n    RETURNING * INTO v_new_connection;\r\n\r\n    RETURN v_new_connection;\r\nEXCEPTION\r\n    WHEN unique_violation THEN\r\n        -- Check current status if unique violation occurs\r\n        SELECT * INTO v_existing_connection FROM public.user_connections \r\n        WHERE requester_id = v_requester_id AND addressee_id = p_addressee_id;\r\n        \r\n        IF v_existing_connection.status = 'PENDING' THEN\r\n            RAISE EXCEPTION 'A connection request is already pending with this user.';\r\n        ELSIF v_existing_connection.status = 'ACCEPTED' THEN\r\n            RAISE EXCEPTION 'You are already connected with this user.';\r\n        ELSIF v_existing_connection.status = 'DECLINED' THEN\r\n            RAISE EXCEPTION 'Your previous connection request was declined. To send a new request, the old one must be cleared or a different flow implemented.';\r\n        ELSIF v_existing_connection.status = 'BLOCKED' THEN\r\n            RAISE EXCEPTION 'Unable to send connection request due to a block by one of the users.';\r\n        ELSE\r\n             RAISE EXCEPTION 'A connection record already exists with this user (status: %). Cannot send new request.', v_existing_connection.status;\r\n        END IF;\r\n    WHEN OTHERS THEN\r\n        RAISE;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "send_welcome_message_to_new_user",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.send_welcome_message_to_new_user()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    system_user_id uuid;\r\n    admin_profile_email TEXT := 'rmarshall@itmarshall.net'; -- System user's email to look up in profiles\r\n    welcome_content text := '👋 Welcome to CanDo! We are excited to have you. Explore the platform and let us know if you have any questions.';\r\nBEGIN\r\n    RAISE NOTICE 'Welcome Message Trigger: Fired for new profile ID %', NEW.id; -- Changed from LOG\r\n\r\n    SELECT id INTO system_user_id FROM public.profiles WHERE email = admin_profile_email LIMIT 1;\r\n\r\n    IF system_user_id IS NULL THEN\r\n        RAISE WARNING 'Welcome Message Trigger: System user profile for email [%] not found. Message not sent.', admin_profile_email;\r\n        RETURN NEW; \r\n    ELSE\r\n        RAISE NOTICE 'Welcome Message Trigger: Found system_user_id [%] for email [%]', system_user_id, admin_profile_email; -- Changed from LOG\r\n    END IF;\r\n\r\n    IF NEW.id = system_user_id THEN\r\n        RAISE NOTICE 'Welcome Message Trigger: New user ID [%] is the same as system_user_id. No message sent to self.', NEW.id; -- Changed from LOG\r\n        RETURN NEW;\r\n    END IF;\r\n\r\n    RAISE NOTICE 'Welcome Message Trigger: Attempting to insert message from [%] to [%]', system_user_id, NEW.id; -- Changed from LOG\r\n    BEGIN\r\n        INSERT INTO public.messages (sender_id, receiver_id, content)\r\n        VALUES (system_user_id, NEW.id, welcome_content);\r\n        RAISE NOTICE 'Welcome Message Trigger: Message inserted successfully from [%] to [%]', system_user_id, NEW.id; -- Changed from LOG\r\n    EXCEPTION\r\n        WHEN OTHERS THEN\r\n            RAISE WARNING 'Welcome Message Trigger: ERROR inserting welcome message from [%] to [%]. SQLSTATE: %, SQLERRM: %', system_user_id, NEW.id, SQLSTATE, SQLERRM;\r\n            -- We let the main transaction (profile insertion) succeed despite welcome message failure.\r\n    END;\r\n\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "set_limit",
+    "function_arguments": "real",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.set_limit(real)\n RETURNS real\n LANGUAGE c\n STRICT\nAS '$libdir/pg_trgm', $function$set_limit$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "show_limit",
+    "function_arguments": "",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.show_limit()\n RETURNS real\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$show_limit$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "show_trgm",
+    "function_arguments": "text",
+    "returns_type": "text[]",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.show_trgm(text)\n RETURNS text[]\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$show_trgm$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "similarity",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.similarity(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$similarity$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "similarity_dist",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.similarity_dist(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$similarity_dist$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "similarity_op",
+    "function_arguments": "text, text",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.similarity_op(text, text)\n RETURNS boolean\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$similarity_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "strict_word_similarity",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.strict_word_similarity(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$strict_word_similarity$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "strict_word_similarity_commutator_op",
+    "function_arguments": "text, text",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.strict_word_similarity_commutator_op(text, text)\n RETURNS boolean\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$strict_word_similarity_commutator_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "strict_word_similarity_dist_commutator_op",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.strict_word_similarity_dist_commutator_op(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$strict_word_similarity_dist_commutator_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "strict_word_similarity_dist_op",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.strict_word_similarity_dist_op(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$strict_word_similarity_dist_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "strict_word_similarity_op",
+    "function_arguments": "text, text",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.strict_word_similarity_op(text, text)\n RETURNS boolean\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$strict_word_similarity_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "toggle_post_bookmark",
+    "function_arguments": "p_post_id uuid",
+    "returns_type": "TABLE(is_bookmarked boolean, bookmark_count bigint)",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.toggle_post_bookmark(p_post_id uuid)\n RETURNS TABLE(is_bookmarked boolean, bookmark_count bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    v_user_id UUID;\r\n    v_is_bookmarked BOOLEAN;\r\n    v_bookmark_count BIGINT;\r\nBEGIN\r\n    -- Get the current user's ID\r\n    v_user_id := auth.uid();\r\n    \r\n    -- Check if the post is already bookmarked\r\n    IF EXISTS (\r\n        SELECT 1 FROM public.post_bookmarks \r\n        WHERE post_id = p_post_id AND user_id = v_user_id\r\n    ) THEN\r\n        -- Remove bookmark\r\n        DELETE FROM public.post_bookmarks \r\n        WHERE post_id = p_post_id AND user_id = v_user_id;\r\n        v_is_bookmarked := false;\r\n    ELSE\r\n        -- Add bookmark\r\n        INSERT INTO public.post_bookmarks (post_id, user_id)\r\n        VALUES (p_post_id, v_user_id);\r\n        v_is_bookmarked := true;\r\n    END IF;\r\n\r\n    -- Get updated bookmark count\r\n    SELECT COUNT(*) INTO v_bookmark_count\r\n    FROM public.post_bookmarks\r\n    WHERE post_id = p_post_id;\r\n\r\n    RETURN QUERY\r\n    SELECT v_is_bookmarked, v_bookmark_count;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "unfollow_company",
+    "function_arguments": "p_company_id uuid",
+    "returns_type": "void",
+    "security_type": "SECURITY DEFINER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.unfollow_company(p_company_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    v_user_id uuid := auth.uid();\r\nBEGIN\r\n    DELETE FROM public.user_company_follows\r\n    WHERE user_id = v_user_id AND company_id = p_company_id;\r\nEND;\r\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "update_rfq_timestamp",
+    "function_arguments": "",
+    "returns_type": "trigger",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "VOLATILE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.update_rfq_timestamp()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n    NEW.updated_at = timezone('utc'::text, now());\n    RETURN NEW;\nEND;\n$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "word_similarity",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.word_similarity(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$word_similarity$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "word_similarity_commutator_op",
+    "function_arguments": "text, text",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.word_similarity_commutator_op(text, text)\n RETURNS boolean\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$word_similarity_commutator_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "word_similarity_dist_commutator_op",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.word_similarity_dist_commutator_op(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$word_similarity_dist_commutator_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "word_similarity_dist_op",
+    "function_arguments": "text, text",
+    "returns_type": "real",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "IMMUTABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.word_similarity_dist_op(text, text)\n RETURNS real\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$word_similarity_dist_op$function$\n"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "word_similarity_op",
+    "function_arguments": "text, text",
+    "returns_type": "boolean",
+    "security_type": "SECURITY INVOKER",
+    "volatility": "STABLE",
+    "comment": null,
+    "function_definition": "CREATE OR REPLACE FUNCTION public.word_similarity_op(text, text)\n RETURNS boolean\n LANGUAGE c\n STABLE PARALLEL SAFE STRICT\nAS '$libdir/pg_trgm', $function$word_similarity_op$function$\n"
+  }
+]

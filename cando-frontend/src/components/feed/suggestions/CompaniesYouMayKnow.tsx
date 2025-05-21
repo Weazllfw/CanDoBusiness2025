@@ -16,6 +16,7 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
   const supabase = createClientComponentClient<Database>();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [followedCompanyIds, setFollowedCompanyIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,20 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
       setCurrentUser(user);
     };
     fetchUser();
+  }, [supabase]);
+
+  // Helper to fetch follow status for all suggested companies
+  const fetchFollowStatusForSuggestions = useCallback(async (userId: string, companyIds: string[]) => {
+    if (!userId || companyIds.length === 0) return new Set<string>();
+    const followed = new Set<string>();
+    // Batch check follow status for each company
+    await Promise.all(companyIds.map(async (companyId) => {
+      const { data, error } = await supabase.rpc('get_company_follow_status', { p_company_id: companyId });
+      if (!error && data === true) {
+        followed.add(companyId);
+      }
+    }));
+    return followed;
   }, [supabase]);
 
   const fetchSuggestions = useCallback(async (userId: string) => {
@@ -37,9 +52,7 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
       });
 
       if (rpcError) throw rpcError;
-      
       const rpcData = data as any[] || [];
-
       const formattedSuggestions: Suggestion[] = rpcData.map((s: any) => ({
         id: s.suggested_company_id,
         name: s.company_name || 'CanDo Company',
@@ -49,27 +62,40 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
         type: 'company',
       }));
       setSuggestions(formattedSuggestions);
+      // Fetch follow status for these companies
+      const companyIds = formattedSuggestions.map(s => s.id);
+      const followed = await fetchFollowStatusForSuggestions(userId, companyIds);
+      setFollowedCompanyIds(followed);
     } catch (e: any) {
       console.error('[CYMK] Error fetching CYMK suggestions:', e);
       setError(e.message || 'Failed to fetch suggestions.');
       setSuggestions([]);
+      setFollowedCompanyIds(new Set());
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, fetchFollowStatusForSuggestions]);
 
   useEffect(() => {
     if (currentUser?.id) {
       fetchSuggestions(currentUser.id);
     } else {
-      if (!currentUser && suggestions.length === 0) setIsLoading(false);
+      if (!currentUser && isLoading) setIsLoading(false);
     }
-  }, [currentUser, fetchSuggestions, suggestions.length]);
+  }, [currentUser, fetchSuggestions]);
 
-  const handleFollow = async (companyId: string): Promise<boolean> => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return true; 
-  };
+  const handleFollow = useCallback(async (companyId: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    try {
+      const { error } = await supabase.rpc('follow_company', { p_company_id: companyId });
+      if (error) throw error;
+      setFollowedCompanyIds(prev => new Set(prev).add(companyId));
+      return true;
+    } catch (error) {
+      console.error('Error following company:', error);
+      return false;
+    }
+  }, [currentUser, supabase]);
 
   if (isLoading) {
     return (
@@ -94,7 +120,13 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
         {suggestions.length > 0 ? (
           <div className="space-y-1">
             {suggestions.map((suggestion) => (
-              <SuggestionCard key={suggestion.id} suggestion={suggestion} onFollow={handleFollow} />
+              <SuggestionCard 
+                key={suggestion.id} 
+                suggestion={suggestion} 
+                onFollow={handleFollow} 
+                currentUser={currentUser}
+                followed={followedCompanyIds.has(suggestion.id)}
+              />
             ))}
           </div>
         ) : (

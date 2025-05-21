@@ -1,0 +1,32 @@
+[
+    {
+      "table_name": "user_notifications",
+      "column_name": "user_id",
+      "column_comment": "The user who will receive this notification."
+    },
+    {
+      "table_name": "user_notifications",
+      "column_name": "title",
+      "column_comment": "A short title for the notification."
+    },
+    {
+      "table_name": "user_notifications",
+      "column_name": "message",
+      "column_comment": "The main content of the notification."
+    },
+    {
+      "table_name": "user_notifications",
+      "column_name": "link_to",
+      "column_comment": "An optional relative path for the notification to link to upon click."
+    },
+    {
+      "table_name": "user_notifications",
+      "column_name": "is_read",
+      "column_comment": "True if the user has marked the notification as read."
+    },
+    {
+      "table_name": "user_notifications",
+      "column_name": "notification_type",
+      "column_comment": "The category of the notification."
+    }
+  ]

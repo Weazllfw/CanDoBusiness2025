@@ -90,18 +90,16 @@ The company onboarding process guides users through creating and setting up thei
     *   `description` TEXT
     *   `website` TEXT
     *   `industry` TEXT
-    *   `location` TEXT
+    *   `location` TEXT (*Note: `CompanyVerification.md` and `Companies.md` list more detailed address fields like `street_address`, `city`, `province`, `country`, `major_metropolitan_area` which are more current.*)
     *   `created_at` TIMESTAMPTZ
     *   `updated_at` TIMESTAMPTZ
+*   **Verification-Related Fields:** This table also includes numerous fields for managing tiered company verification (e.g., `verification_status`, `business_number`, `tier2_document_type`, `tier1_verified_at`, `tier2_verified_at` etc.). For a comprehensive list and description of these fields, please refer to `Documentation/CompanyVerification.md` and `Documentation/Companies.md`.
 
-#### 4.1.2. `company_verification` Table
-*   **Core Fields:**
-    *   `company_id` UUID (PK, FK to `companies`)
-    *   `verification_tier` verification_tier_enum
-    *   `status` verification_status_enum
-    *   `submitted_at` TIMESTAMPTZ
-    *   `verified_at` TIMESTAMPTZ
-    *   `verified_by` UUID
+#### 4.1.2. `company_verification` Table (Removed)
+
+---
+*The `company_verification` table section has been removed. Verification details are stored directly within the `public.companies` table. Refer to `Documentation/CompanyVerification.md` for the current verification system details.* 
+---
 
 ## 5. Storage Integration
 

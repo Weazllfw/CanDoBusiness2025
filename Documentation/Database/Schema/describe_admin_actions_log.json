@@ -1,0 +1,37 @@
+[
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "admin_user_id",
+    "column_comment": "The administrator who performed the action."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "action_type",
+    "column_comment": "The type of moderation action taken."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "target_profile_id",
+    "column_comment": "The user profile that was the target of the action or the author of targeted content."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "target_content_id",
+    "column_comment": "The ID of the specific content (post, comment, flag) or profile targeted."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "target_content_type",
+    "column_comment": "The type of the targeted content or entity."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "reason_notes",
+    "column_comment": "Notes or justification provided by the admin for the action."
+  },
+  {
+    "table_name": "admin_actions_log",
+    "column_name": "details",
+    "column_comment": "A JSONB field for storing additional structured details about the action."
+  }
+]

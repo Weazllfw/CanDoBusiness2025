@@ -11,6 +11,7 @@ import { PencilIcon, TrashIcon, FlagIcon } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 import toast from 'react-hot-toast';
+import { ShieldCheckIcon } from '@heroicons/react/24/solid'; // Added for verified badge
 
 // Updated Comment type to include depth and use user_object
 export interface ThreadedComment {
@@ -26,6 +27,9 @@ export interface ThreadedComment {
     avatar_url: string | null;
     // email?: string; // email is also available if needed
   } | null;
+  commenter_verified_company_id?: string | null; // Added
+  commenter_verified_company_name?: string | null; // Added
+  commenter_verified_company_logo_url?: string | null; // Added
   // Potentially other fields like status, etc., if returned by RPC and needed
 }
 
@@ -58,6 +62,15 @@ const CommentItem: React.FC<CommentItemProps> = ({
   const authorName = comment.user_object?.name || 'User';
   const authorAvatar = comment.user_object?.avatar_url;
 
+  // Display logic for commenter (User or Company)
+  const displayAvatar = comment.commenter_verified_company_logo_url || authorAvatar;
+  const displayName = comment.commenter_verified_company_name 
+    ? `${comment.commenter_verified_company_name} (${authorName})` 
+    : authorName;
+  const displayLink = comment.commenter_verified_company_id 
+    ? `/company/${comment.commenter_verified_company_id}`
+    : `/users/${comment.user_id}`; // Assume /users/:id route for profiles
+
   const handleReplySubmittedInternal = useCallback((newReply: ThreadedComment) => {
     setShowReplyForm(false);
     if (onReplySubmitted) {
@@ -71,27 +84,33 @@ const CommentItem: React.FC<CommentItemProps> = ({
   return (
     <div className={`pl-${indentLevel * 4} border-l-2 ${indentLevel > 0 ? 'border-gray-200' : 'border-transparent'} pt-2 first:pt-0`}>
       <div className="flex space-x-3">
-        {authorAvatar ? (
-          <Image
-            src={authorAvatar}
-            alt={authorName}
-            width={32}
-            height={32}
-            className="rounded-full object-cover"
-          />
+        {displayAvatar ? (
+          <Link href={displayLink} passHref>
+            <Image
+              src={displayAvatar}
+              alt={displayName}
+              width={32}
+              height={32}
+              className="rounded-full object-cover cursor-pointer"
+            />
+          </Link>
         ) : (
-          <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-white text-sm font-semibold">
-            {authorName.charAt(0).toUpperCase()}
-          </div>
+          <Link href={displayLink} passHref>
+            <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-white text-sm font-semibold cursor-pointer">
+              {(comment.commenter_verified_company_name || authorName).charAt(0).toUpperCase()}
+            </div>
+          </Link>
         )}
         <div className="flex-grow">
           <div className="flex items-center space-x-2 mb-0.5">
-            {/* Optional: Link to user's profile */}
-            {/* <Link href={`/profile/${comment.profiles?.id || comment.user_id}`}> */}
-              <span className="text-sm font-semibold text-gray-800 hover:underline">
-                {authorName}
+            <Link href={displayLink} passHref>
+              <span className="text-sm font-semibold text-gray-800 hover:underline cursor-pointer">
+                {displayName}
               </span>
-            {/* </Link> */}
+            </Link>
+            {comment.commenter_verified_company_id && (
+                <ShieldCheckIcon className="h-4 w-4 text-blue-500" title="Verified Company Commenter"/>
+            )}
             <span className="text-xs text-gray-400">
               {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
             </span>
@@ -110,7 +129,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
               <FlagButton 
                 contentId={comment.id} 
                 contentType="comment" 
-                currentUserId={currentUser.id} 
+                contentOwnerId={comment.user_id} 
               />
             )}
           </div>

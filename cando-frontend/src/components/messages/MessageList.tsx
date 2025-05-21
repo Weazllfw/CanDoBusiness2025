@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { MessageView } from '@/lib/hooks/useMessages'
 import { format } from 'date-fns'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import type { Database } from '@/types/supabase'
+import Image from 'next/image';
+import { UserIcon, BuildingOffice2Icon } from '@heroicons/react/24/outline';
 
 interface MessageListProps {
   messages: MessageView[]
@@ -19,7 +19,14 @@ function MessageBubble({
   message: MessageView
   currentUserId: string
 }) {
-  const isSender = message.sender_id === currentUserId
+  const isSender = message.is_sent_by_current_user;
+
+  const senderDisplayName = message.acting_as_company_name 
+    ? `${message.acting_as_company_name} (${message.sender_name || 'User'})` 
+    : message.sender_name || 'Unknown Sender';
+  
+  const senderAvatarUrl = message.acting_as_company_logo_url || message.sender_avatar_url;
+  const senderDefaultIconType = message.acting_as_company_id ? 'company' : 'user';
 
   return (
     <div
@@ -29,11 +36,14 @@ function MessageBubble({
     >
       <div className="relative flex items-end gap-2">
         {!isSender && (
-          message.sender_avatar ? (
-            <img src={message.sender_avatar} alt={message.sender_name || 'Sender'} className="h-8 w-8 rounded-full" />
+          senderAvatarUrl ? (
+            <Image src={senderAvatarUrl} alt={senderDisplayName} width={32} height={32} className="h-8 w-8 rounded-full" />
           ) : (
             <span className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs">
-              {message.sender_name?.charAt(0).toUpperCase() || 'S'}
+              {senderDefaultIconType === 'user' ? 
+                <UserIcon className="h-5 w-5 text-white" /> : 
+                <BuildingOffice2Icon className="h-5 w-5 text-white" />
+              }
             </span>
           )
         )}
@@ -46,7 +56,7 @@ function MessageBubble({
         >
           {!isSender && (
             <p className="text-xs font-semibold mb-1">
-              {message.sender_name || 'Unknown Sender'}
+              {senderDisplayName}
             </p>
           )}
           <div className="whitespace-pre-wrap break-words">

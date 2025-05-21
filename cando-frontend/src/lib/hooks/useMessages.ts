@@ -9,23 +9,25 @@ export interface MessageView {
   created_at: string
   content: string
   sender_id: string
-  receiver_id: string
-  read: boolean
   sender_name: string | null
-  sender_avatar: string | null
-  receiver_name: string | null
-  receiver_avatar: string | null
+  sender_avatar_url: string | null
+  acting_as_company_id: string | null
+  acting_as_company_name: string | null
+  acting_as_company_logo_url: string | null
+  is_sent_by_current_user: boolean
 }
 
 // Matches the return type of public.get_conversations function
 export interface Conversation {
-  other_user_id: string
-  other_user_name: string | null
-  other_user_avatar: string | null
+  partner_id: string
+  partner_type: 'user' | 'company'
+  partner_name: string | null
+  partner_avatar_url: string | null
   last_message_id: string
   last_message_content: string
   last_message_at: string
   last_message_sender_id: string
+  last_message_acting_as_company_id: string | null
   unread_count: number
 }
 
@@ -38,11 +40,14 @@ interface MessagesTableRow {
   sender_id: string
   receiver_id: string
   read: boolean
+  acting_as_company_id?: string | null
+  target_is_company?: boolean
 }
 
 export function useMessages(currentUserId: string | undefined) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentMessages, setCurrentMessages] = useState<MessageView[]>([])
+  const [currentOpenPartner, setCurrentOpenPartner] = useState<{ id: string; type: 'user' | 'company' } | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const supabase = createClientComponentClient<Database>() as SupabaseClient<Database>
@@ -56,13 +61,13 @@ export function useMessages(currentUserId: string | undefined) {
     setIsLoadingConversations(true)
     try {
       const { data, error } = await supabase
-        .rpc('get_conversations', { p_current_user_id: currentUserId })
+        .rpc('get_conversations')
       
       if (error) {
         console.error('Error loading conversations:', error.message)
         setConversations([])
       } else {
-        setConversations(data || [])
+        setConversations((data as Conversation[]) || [])
       }
     } catch (catchError) {
       console.error('Unexpected error in fetchConversations:', catchError)
@@ -87,38 +92,29 @@ export function useMessages(currentUserId: string | undefined) {
 
       await fetchConversations()
 
-      const isRelevantToCurrentView = 
-        currentMessages.length > 0 && 
-        (newMessageRow.sender_id === currentUserId || newMessageRow.receiver_id === currentUserId)
+      if (currentOpenPartner) {
+        let messageIsForCurrentOpenPartner = false;
 
-      if (isRelevantToCurrentView) {
-        const firstMessageInView = currentMessages[0]
-        const currentConversationOtherUserId =
-          firstMessageInView.sender_id === currentUserId 
-            ? firstMessageInView.receiver_id 
-            : firstMessageInView.sender_id
-
-        if (newMessageRow.sender_id === currentConversationOtherUserId || 
-            newMessageRow.receiver_id === currentConversationOtherUserId) {
-          
-          const { data: newlyFetchedMessage, error: fetchError } = await supabase
-            .from('message_view')
-            .select('*')
-            .eq('id', newMessageRow.id)
-            .single()
-          
-          if (fetchError) {
-            console.error('Error fetching new message details from view:', fetchError.message)
-            return
+        if (currentOpenPartner.type === 'user') {
+          if ((newMessageRow.sender_id === currentUserId && newMessageRow.receiver_id === currentOpenPartner.id && !newMessageRow.target_is_company && !newMessageRow.acting_as_company_id) ||
+              (newMessageRow.sender_id === currentOpenPartner.id && newMessageRow.receiver_id === currentUserId && !newMessageRow.target_is_company && !newMessageRow.acting_as_company_id)) {
+            messageIsForCurrentOpenPartner = true;
           }
-
-          if (newlyFetchedMessage) {
-            setCurrentMessages(prevMessages => 
-              [newlyFetchedMessage as MessageView, ...prevMessages]
-              .sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-              .filter((msg, index, self) => index === self.findIndex(t => t.id === msg.id)) 
-            )
+        } else {
+          if ((newMessageRow.sender_id === currentUserId && newMessageRow.target_is_company && newMessageRow.receiver_id === currentOpenPartner.id) ||
+              (newMessageRow.receiver_id === currentUserId && !newMessageRow.target_is_company && newMessageRow.acting_as_company_id === currentOpenPartner.id) ||
+              (newMessageRow.acting_as_company_id && newMessageRow.target_is_company && 
+                ( (await isUserAdminOfCompany(supabase, newMessageRow.acting_as_company_id, currentUserId) && newMessageRow.receiver_id === currentOpenPartner.id) ||
+                  (newMessageRow.acting_as_company_id === currentOpenPartner.id && await isUserAdminOfCompany(supabase, newMessageRow.receiver_id, currentUserId))
+                )
+              )
+             ){
+             messageIsForCurrentOpenPartner = true;
           }
+        }
+
+        if (messageIsForCurrentOpenPartner) {
+          loadConversationMessages(currentOpenPartner.id, currentOpenPartner.type)
         }
       }
     }
@@ -142,20 +138,23 @@ export function useMessages(currentUserId: string | undefined) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [currentUserId, supabase, fetchConversations, currentMessages])
+  }, [currentUserId, supabase, fetchConversations, currentMessages, currentOpenPartner])
 
-  const loadConversationMessages = useCallback(async (otherUserId: string) => {
-    if (!currentUserId || !otherUserId) {
+  const loadConversationMessages = useCallback(async (partnerId: string, partnerType: 'user' | 'company') => {
+    if (!currentUserId || !partnerId || !partnerType) {
       setCurrentMessages([])
       return
     }
     setIsLoadingMessages(true)
+    setCurrentOpenPartner({ id: partnerId, type: partnerType });
     try {
       const { data, error } = await supabase
-        .from('message_view')
-        .select('*')
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
-        .order('created_at', { ascending: false })
+        .rpc('get_messages_for_conversation', {
+          p_partner_id: partnerId,
+          p_partner_type: partnerType,
+          p_page_number: 1,
+          p_page_size: 20
+        })
 
       if (error) {
         console.error('Error loading messages:', error.message)
@@ -164,23 +163,8 @@ export function useMessages(currentUserId: string | undefined) {
         setCurrentMessages((data as MessageView[]) || [])
       }
 
-      if (data && data.length > 0) {
-        const unreadMessageIds = data
-          .filter(msg => msg.receiver_id === currentUserId && !msg.read)
-          .map(msg => msg.id)
-        
-        if (unreadMessageIds.length > 0) {
-          const { error: updateError } = await supabase
-            .from('messages')
-            .update({ read: true })
-            .in('id', unreadMessageIds)
-            .eq('receiver_id', currentUserId)
-          
-          if (updateError) {
-            console.error('Error marking messages as read:', updateError.message)
-          }
-          await fetchConversations()
-        }
+      if (data && (data as MessageView[]).length > 0) {
+        await fetchConversations()
       }
     } catch (catchError) {
       console.error('Unexpected error in loadConversationMessages:', catchError)
@@ -190,29 +174,25 @@ export function useMessages(currentUserId: string | undefined) {
     }
   }, [currentUserId, supabase, fetchConversations])
 
-  const sendMessage = async (receiverId: string, content: string) => {
+  const sendMessage = async (receiverId: string, content: string, actingAsCompanyId?: string | null, targetIsCompany?: boolean) => {
     if (!currentUserId || !receiverId || !content.trim()) {
       console.error('Missing currentUserId, receiverId, or content for sendMessage')
       throw new Error('Missing required fields for sending message')
     }
     try {
       const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          sender_id: currentUserId,
-          receiver_id: receiverId,
-          content: content.trim(),
+        .rpc('send_message', {
+          p_receiver_id: receiverId,
+          p_content: content.trim(),
+          p_acting_as_company_id: actingAsCompanyId ?? undefined,
+          p_target_is_company: targetIsCompany ?? false
         })
-        .select('id, created_at, content, sender_id, receiver_id, read') 
-        .single()
 
       if (error) {
         console.error('Error sending message:', error.message)
         throw error
       }
       
-      await fetchConversations()
-
       return data as MessagesTableRow | null
     } catch (catchError) {
       console.error('Unexpected error in sendMessage:', catchError)
@@ -229,4 +209,20 @@ export function useMessages(currentUserId: string | undefined) {
     sendMessage,
     fetchConversations, 
   }
+}
+
+async function isUserAdminOfCompany(supabase: SupabaseClient<Database>, companyId: string, userId: string | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const { data, error } = await supabase
+    .from('company_users')
+    .select('count')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .in('role', ['ADMIN', 'OWNER'])
+    .single();
+  if (error) {
+    console.error('Error checking company admin status:', error);
+    return false;
+  }
+  return (data?.count ?? 0) > 0;
 } 

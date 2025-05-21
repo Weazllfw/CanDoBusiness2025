@@ -124,6 +124,8 @@ BEGIN
     SET
         status = p_new_status,
         admin_notes = COALESCE(p_admin_notes, admin_notes), -- Keep existing notes if new ones are null
+        reviewed_by = auth.uid(), -- Set the reviewer
+        reviewed_at = now(),      -- Set the review time
         updated_at = now()
     WHERE id = p_flag_id
     RETURNING *;
@@ -219,6 +221,8 @@ BEGIN
     SET
         status = p_new_status,
         admin_notes = COALESCE(p_admin_notes, admin_notes),
+        reviewed_by = auth.uid(), -- Set the reviewer
+        reviewed_at = now(),      -- Set the review time
         updated_at = now()
     WHERE id = p_flag_id
     RETURNING *;

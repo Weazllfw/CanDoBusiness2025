@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { UserPlusIcon, BuildingOffice2Icon, CheckIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
+import type { User } from '@supabase/supabase-js';
+import UserConnectButton from '@/components/connections/UserConnectButton';
 
 export interface Suggestion {
   id: string;
@@ -16,37 +18,35 @@ export interface Suggestion {
 
 interface SuggestionCardProps {
   suggestion: Suggestion;
-  onConnect?: (id: string) => Promise<boolean>; // Returns true on success
+  currentUser: User | null;
+  onConnect?: (id: string) => Promise<boolean>; // Kept for now, but will be unused for person
   onFollow?: (id: string) => Promise<boolean>;  // Returns true on success
+  onConnectionStatusChange?: (targetUserId: string, newStatus: string) => void;
+  followed?: boolean; // Added for company follow state
 }
 
-const SuggestionCard: React.FC<SuggestionCardProps> = ({ suggestion, onConnect, onFollow }) => {
+const SuggestionCard: React.FC<SuggestionCardProps> = ({ suggestion, currentUser, onConnect, onFollow, onConnectionStatusChange, followed }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [isDone, setIsDone] = useState(false); // To show a checkmark or changed state
+  const [isDone, setIsDone] = useState(false);
 
-  const handleAction = async () => {
-    setIsLoading(true);
-    let success = false;
-    if (suggestion.type === 'person' && onConnect) {
-      success = await onConnect(suggestion.id);
-    }
+  const handleFollowAction = async () => {
     if (suggestion.type === 'company' && onFollow) {
-      success = await onFollow(suggestion.id);
-    }
-    setIsLoading(false);
-    if (success) {
-      setIsDone(true);
+      setIsLoading(true);
+      const success = await onFollow(suggestion.id);
+      setIsLoading(false);
+      if (success) {
+        setIsDone(true);
+      }
     }
   };
 
-  const ActionIcon = suggestion.type === 'person' ? UserPlusIcon : PlusIcon;
-  const actionText = suggestion.type === 'person' ? 'Connect' : 'Follow';
-
   return (
     <div className="flex items-start space-x-3 py-3">
-      <div className="flex-shrink-0">
-        {suggestion.avatar_url ? (
-          <Image src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200" />
+      <div className="flex-shrink-0 h-10 w-10">
+        {suggestion.avatar_url && suggestion.avatar_url.includes('api.dicebear.com') ? (
+          <img src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200 object-cover" />
+        ) : suggestion.avatar_url ? (
+          <Image src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200 object-cover" />
         ) : (
           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
             {suggestion.type === 'person' ? (
@@ -73,28 +73,39 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({ suggestion, onConnect, 
           <p className="text-xs text-gray-500 truncate">{suggestion.reason}</p>
         )}
       </div>
-      {!isDone && (
-        <button
-          onClick={handleAction}
-          disabled={isLoading}
-          title={actionText}
-          className={`flex items-center justify-center h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          {isLoading ? (
-            <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <ActionIcon className="h-5 w-5" />
-          )}
-        </button>
-      )}
-      {isDone && (
-        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-50 text-green-500">
-          <CheckIcon className="h-5 w-5" />
-        </div>
-      )}
+      {suggestion.type === 'person' && currentUser ? (
+        <UserConnectButton 
+          targetUserId={suggestion.id} 
+          currentUser={currentUser} 
+          {...(onConnectionStatusChange && { onStatusChange: onConnectionStatusChange })}
+        />
+      ) : suggestion.type === 'company' ? (
+        followed ? (
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-50 text-green-500">
+            <CheckIcon className="h-5 w-5" />
+          </div>
+        ) : !isDone ? (
+          <button
+            onClick={handleFollowAction}
+            disabled={isLoading}
+            title={'Follow'}
+            className={`flex items-center justify-center h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {isLoading ? (
+              <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <PlusIcon className="h-5 w-5" />
+            )}
+          </button>
+        ) : (
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-50 text-green-500">
+            <CheckIcon className="h-5 w-5" />
+          </div>
+        )
+      ) : null}
     </div>
   );
 };

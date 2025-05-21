@@ -25,14 +25,21 @@ export default function EditCompanyPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
 
-  const fetchCompanyData = useCallback(async (id: string) => {
+  const companyIdFromParams = params?.id as string;
+
+  const fetchCompanyData = useCallback(async (idToFetch: string) => {
+    if (!idToFetch) {
+        setError("Company ID is missing for fetch.");
+        setIsLoading(false);
+        return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const { data, error: fetchError } = await supabase
         .from('companies')
         .select('*')
-        .eq('id', id)
+        .eq('id', idToFetch)
         .single();
 
       if (fetchError) {
@@ -87,17 +94,19 @@ export default function EditCompanyPage() {
   }, [supabase]);
 
   useEffect(() => {
-    const id = params?.id as string;
-    if (id) {
-      fetchCompanyData(id);
+    if (companyIdFromParams) {
+      fetchCompanyData(companyIdFromParams);
     } else {
       setError("No company ID provided in the URL.");
+      setFetchedCompanyData(null);
+      setFormInitialData(null);
     }
-  }, [params, fetchCompanyData]);
+  }, [companyIdFromParams, fetchCompanyData]);
 
   const handleUpdate = async (formData: CompanyFormData, newLogoFile?: File | null) => {
-    if (!companyId) {
+    if (!companyIdFromParams) {
       setError("Company ID is missing, cannot update.");
+      toast.error("Company ID is missing. Cannot update.");
       return;
     }
 
@@ -108,12 +117,12 @@ export default function EditCompanyPage() {
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       if (authError || !session) {
         toast.error('You must be logged in to edit a company.');
-        router.push('/login');
+        router.push('/auth/login');
         return;
       }
-      // console.log('[EditCompanyPage] Current User ID (auth.uid()):', session.user.id);
 
       if (fetchedCompanyData?.owner_id && session.user.id !== fetchedCompanyData.owner_id) {
+          toast.error("You are not authorized to edit this company.");
           throw new Error("You are not authorized to edit this company.");
       }
       
@@ -122,83 +131,91 @@ export default function EditCompanyPage() {
       if (newLogoFile) {
         const fileExt = newLogoFile.name.split('.').pop();
         const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `company-logos/${companyId}/${fileName}`;
-        // console.log('[EditCompanyPage] Uploading logo. Company ID:', companyId, 'File path:', filePath);
-
+        const filePath = `${companyIdFromParams}/${fileName}`;
+        
+        toast.loading('Uploading logo...', { id: 'logo-upload' });
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('company_assets')
+          .from('company-logos')
           .upload(filePath, newLogoFile, { cacheControl: '3600', upsert: true });
 
         if (uploadError) {
+          toast.error(`Failed to upload new logo: ${uploadError.message}`, { id: 'logo-upload' });
           throw new Error(`Failed to upload new logo: ${uploadError.message}`);
         }
+        toast.success('Logo uploaded!', { id: 'logo-upload' });
 
         const { data: publicUrlData } = supabase.storage
           .from('company-logos')
           .getPublicUrl(filePath);
         
         if (!publicUrlData || !publicUrlData.publicUrl) {
-          throw new Error('Logo uploaded, but could not retrieve its public URL.');
+          console.warn('Logo uploaded, but could not retrieve its public URL immediately. This might be due to RLS or eventual consistency.');
+          newAvatarUrl = publicUrlData.publicUrl ? `${publicUrlData.publicUrl}?t=${new Date().getTime()}` : null;
+          if (!newAvatarUrl && uploadData?.path) {
+            newAvatarUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${uploadData.path}?t=${new Date().getTime()}`;
+          } else if (!newAvatarUrl) {
+            toast.error('Could not determine new logo URL after upload.');
+          }
+        } else {
+             newAvatarUrl = `${publicUrlData.publicUrl}?t=${new Date().getTime()}`;
         }
-        newAvatarUrl = publicUrlData.publicUrl;
+
       } else if (formData.avatar_url === null && fetchedCompanyData?.avatar_url) {
         newAvatarUrl = null; 
       }
 
-      // Destructure formData to explicitly map to DB columns
-      const {
-        // Fields from form that need remapping to DB column names or are already correct
-        province,                             // from form, maps to province_territory_code
-        major_metropolitan_area,          // from form, maps to major_metropolitan_area
-        other_metropolitan_area_specify,  // from form, maps to other_metropolitan_area_specify
-        contact_person_name,              // from form, maps to contact_person_name
-        contact_person_email,             // from form, maps to contact_person_email
-        contact_person_phone,             // from form, maps to contact_person_phone
-        services,                           // from form, maps to services_provided
-        self_attestation_completed,       // from form, maps to self_attestation_completed
-        business_number,                  // from form, maps to tier1_business_number (or business_number if that's the direct DB col)
-        public_presence_links,            // from form, maps to tier1_public_presence_links (or public_presence_links)
-        // owner_id and id are handled separately or not updated
-        // avatar_url is handled by newAvatarUrl
-        ...restOfFormData // Contains name, description, website, industry, year_founded, etc. that match DB columns
-      } = formData;
-
       const companyUpdateData = {
-        ...restOfFormData, // Spread fields that directly match DB column names
+        name: formData.name,
+        description: formData.description,
+        website: formData.website,
+        industry: formData.industry,
         avatar_url: newAvatarUrl,
-        
-        // Explicitly map fields that differ or for clarity
-        province: province,
-        major_metropolitan_area: major_metropolitan_area,
-        other_metropolitan_area_specify: other_metropolitan_area_specify,
-        contact_person_name: contact_person_name,
-        contact_person_email: contact_person_email,
-        contact_person_phone: contact_person_phone,
-        services: services,
-        self_attestation_completed: self_attestation_completed,
-        business_number: business_number,
-        public_presence_links: public_presence_links,
+        street_address: formData.street_address,
+        city: formData.city,
+        province: formData.province,
+        postal_code: formData.postal_code,
+        major_metropolitan_area: formData.major_metropolitan_area,
+        other_metropolitan_area_specify: formData.other_metropolitan_area_specify,
+        contact_person_name: formData.contact_person_name,
+        contact_person_email: formData.contact_person_email,
+        contact_person_phone: formData.contact_person_phone,
+        services: formData.services,
+        owner_id: fetchedCompanyData?.owner_id,
+        banner_url: formData.banner_url,
+        year_founded: formData.year_founded,
+        business_type: formData.business_type,
+        employee_count: formData.employee_count,
+        revenue_range: formData.revenue_range,
+        social_media_links: formData.social_media_links,
+        certifications: formData.certifications,
+        tags: formData.tags,
+        self_attestation_completed: formData.self_attestation_completed,
+        business_number: formData.business_number,
+        public_presence_links: formData.public_presence_links,
+        updated_at: new Date().toISOString(),
       };
 
-      // Ensure owner_id and id are not part of the update payload if they came via formData spread
-      delete (companyUpdateData as any).owner_id;
       delete (companyUpdateData as any).id; 
 
+      toast.loading('Updating company...', { id: 'company-update' });
       const { error: updateError } = await supabase
         .from('companies')
         .update(companyUpdateData)
-        .eq('id', companyId);
+        .eq('id', companyIdFromParams);
 
       if (updateError) {
+        toast.error(`Failed to update company: ${updateError.message}`, { id: 'company-update' });
         throw new Error(`Failed to update company: ${updateError.message}`);
       }
-
-      router.refresh();
-      router.push(`/company/${companyId}`);
+      
+      toast.success('Company updated successfully!', { id: 'company-update' });
+      router.push(`/company/${companyIdFromParams}`);
 
     } catch (e: any) {
       console.error('Error updating company:', e);
-      setError(e.message || 'An unexpected error occurred while updating company.');
+      const errorMessage = e.message || 'An unexpected error occurred while updating company.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }

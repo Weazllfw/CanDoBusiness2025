@@ -1,0 +1,17 @@
+[
+  {
+    "table_name": "company_to_company_connections",
+    "column_name": "source_company_id",
+    "column_comment": "The company initiating the connection/action."
+  },
+  {
+    "table_name": "company_to_company_connections",
+    "column_name": "target_company_id",
+    "column_comment": "The company being targeted by the connection/action."
+  },
+  {
+    "table_name": "company_to_company_connections",
+    "column_name": "connection_type",
+    "column_comment": "Type of connection (e.g., 'FOLLOWING', 'PARTNERSHIP_REQUESTED', 'PARTNERSHIP_ACCEPTED', 'PARTNERSHIP_DECLINED')."
+  }
+]

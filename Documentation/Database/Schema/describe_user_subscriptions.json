@@ -1,0 +1,42 @@
+[
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "user_id",
+    "column_comment": "The user associated with this subscription. Each user has one primary subscription record."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "tier",
+    "column_comment": "Subscription tier (e.g., 'REGULAR', 'PREMIUM', 'PRO')."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "stripe_subscription_id",
+    "column_comment": "Stripe's unique ID for the subscription. NULL for non-Stripe managed tiers."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "stripe_customer_id",
+    "column_comment": "Stripe's unique ID for the customer. NULL for non-Stripe managed tiers."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "status",
+    "column_comment": "Current status (e.g., 'active', 'canceled', 'past_due', 'incomplete', 'free_tier')."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "current_period_start",
+    "column_comment": "Start date of the current billing cycle from Stripe."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "current_period_end",
+    "column_comment": "End date of the current billing cycle from Stripe."
+  },
+  {
+    "table_name": "user_subscriptions",
+    "column_name": "cancel_at_period_end",
+    "column_comment": "If true, the subscription will be canceled at the end of the current period via Stripe."
+  }
+]

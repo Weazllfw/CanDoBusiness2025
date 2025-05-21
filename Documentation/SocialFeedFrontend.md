@@ -1,4 +1,102 @@
-# Social Feed Frontend Implementation
+# Social Feed Frontend Documentation
+
+This document outlines the frontend implementation for the social feed system, complementing the backend details in `Documentation/SocialFeedSystem.md`.
+
+## 1. Overview
+
+The frontend for the social feed is primarily responsible for:
+- Fetching and displaying a dynamic feed of posts based on various filters.
+- Rendering individual posts with author details (including trust level, verification status, and company affiliation if posted on behalf of a company).
+- Displaying comments on posts, including special badging for comments made by users affiliated with verified companies.
+- Providing UI elements for users to interact with feed filters and posts.
+
+## 2. Core Feed Page: `cando-frontend/src/app/feed/page.tsx`
+
+This page serves as the main entry point for the user's social feed.
+
+*   **State Management:**
+    *   `posts: FeedPost[]`: Stores the array of posts fetched from the backend.
+    *   `feedType: FeedType ('ALL' | 'VERIFIED_COMPANIES' | ...)`: Manages the selected feed type filter.
+    *   `minimumTrustLevel: UserTrustLevel | undefined`: Manages the selected minimum trust level filter for post authors.
+    *   `selectedCategory: string`: Manages the selected post category filter.
+    *   Standard loading, error, and pagination states.
+
+*   **Data Fetching (`fetchPosts` function):**
+    *   Calls the `public.get_feed_posts` RPC.
+    *   Passes `p_user_id`, pagination parameters (`p_limit`, `p_offset`), `p_category`, and the new filter parameters `p_feed_type` and `p_minimum_trust_level`.
+
+*   **`FeedPost` Interface:**
+    This interface defines the structure of post objects used throughout the feed components. It has been updated to include fields returned by the enhanced `get_feed_posts` RPC:
+    ```typescript
+    export interface FeedPost {
+      // ... other post fields (post_id, content, created_at, media, etc.)
+      author_user_id: string;
+      author_name: string;
+      author_avatar_url: string;
+      author_trust_level?: UserTrustLevel;         // Added
+      author_is_verified?: boolean;              // Added
+      acting_company_id?: string | null;         // Added - if post made AS company
+      acting_company_name?: string | null;       // Added
+      acting_company_logo_url?: string | null;   // Added
+      company_id: string | null;                // Original field for post linked to a company page
+      company_name: string | null;
+      company_avatar_url: string | null;
+      like_count: number;
+      comment_count: number;
+      is_liked_by_current_user: boolean;
+      ranking_score?: number;                    // Added
+      // ... other interaction fields
+    }
+    ```
+
+*   **UI for Filters:**
+    *   Includes `<select>` dropdowns for users to choose `Feed Type` and `Minimum Trust Level`.
+    *   These controls update the respective state variables, triggering a refetch of the posts.
+
+## 3. Post Rendering: `cando-frontend/src/components/feed/PostFeed.tsx` (and `PostCard`)
+
+The `PostFeed.tsx` component iterates over the `posts` array and uses a sub-component (likely `PostCard.tsx` defined within it or separately) to render each post.
+
+*   **`PostCard.tsx` Rendering Logic:**
+    *   **Author/Company Display:**
+        *   Prioritizes `acting_company_logo_url` and `acting_company_name` for avatar and name display if the post was made *as a company*. The author's name (`author_name`) is typically shown in parentheses, e.g., "Acting Company Name (by Author Name)".
+        *   Falls back to `company_avatar_url` / `company_name` if the post is directly associated with a company but not *as* that company.
+        *   Falls back to `author_avatar_url` / `author_name` for regular user posts.
+        *   User and company names/avatars are generally linked to their respective profile/company pages.
+    *   **Author Badges (for non-"acting_as_company" posts or alongside):**
+        *   Displays `author_trust_level` (e.g., "Established", "Verified Contributor") with appropriate styling.
+        *   Displays a `ShieldCheckIcon` (verification badge) if `author_is_verified` is true.
+
+## 4. Comment Rendering: `cando-frontend/src/components/feed/CommentItem.tsx`
+
+This component is responsible for rendering individual comments within a post's comment thread.
+
+*   **`ThreadedComment` Interface:**
+    This interface has been updated to include fields for verified company commenter badging:
+    ```typescript
+    export interface ThreadedComment {
+      // ... other comment fields (id, content, created_at, user_id, user_object, depth)
+      commenter_verified_company_id?: string | null;    // Added
+      commenter_verified_company_name?: string | null;  // Added
+      commenter_verified_company_logo_url?: string | null;// Added
+    }
+    ```
+*   **Rendering Logic:**
+    *   **Commenter Display:**
+        *   If `commenter_verified_company_id` is present, the commenter's avatar may be overridden by `commenter_verified_company_logo_url`.
+        *   The display name is formatted as "Verified Company Name (Commenter User Name)".
+        *   A `ShieldCheckIcon` (verification badge) is displayed next to the company name.
+        *   The link for the commenter typically points to the verified company's page.
+    *   If no verified company affiliation is present, it defaults to displaying the commenter's user avatar and name (from `user_object`), linking to their user profile.
+
+## 5. Supabase Type Generation Note
+
+During the implementation of these features, issues were encountered with Supabase type generation (`supabase gen types typescript --local`) not always reflecting the latest database schema changes immediately or correctly. This necessitated the use of temporary workarounds such as:
+- Defining string literal union types locally (e.g., for `UserTrustLevel`).
+- Using `as any` for some RPC calls or data-to-type casting.
+- Making interface properties optional to avoid type errors during development.
+
+Resolving these type generation/synchronization issues is important for long-term code health and type safety.
 
 ## 1. Overview
 

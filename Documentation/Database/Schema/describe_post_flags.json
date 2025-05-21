@@ -1,0 +1,37 @@
+[
+  {
+    "table_name": "post_flags",
+    "column_name": "post_id",
+    "column_comment": "The post that was flagged."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "user_id",
+    "column_comment": "The user who submitted the flag."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "reason",
+    "column_comment": "The reason provided by the user for flagging."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "status",
+    "column_comment": "The current status of the flag (e.g., pending, resolved)."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "reviewed_by",
+    "column_comment": "The admin user who reviewed and actioned the flag."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "reviewed_at",
+    "column_comment": "Timestamp when the flag was reviewed."
+  },
+  {
+    "table_name": "post_flags",
+    "column_name": "admin_notes",
+    "column_comment": "Internal notes made by an administrator during the review of the flag."
+  }
+]

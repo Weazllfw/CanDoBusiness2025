@@ -16,7 +16,7 @@ CREATE TABLE public.post_comments (
 COMMENT ON TABLE public.post_comments IS 'Stores comments made by users on posts, allowing for threaded conversations.';
 COMMENT ON COLUMN public.post_comments.post_id IS 'The post to which the comment belongs.';
 COMMENT ON COLUMN public.post_comments.user_id IS 'The user who authored the comment.';
-COMMENT ON COLUMN public.post_comments.parent_comment_id IS 'For threaded replies, references the parent comment''s ID.';
+COMMENT ON COLUMN public.post_comments.parent_comment_id IS 'For threaded replies, references the parent comment''''s ID.';
 COMMENT ON COLUMN public.post_comments.content IS 'The textual content of the comment.';
 COMMENT ON COLUMN public.post_comments.created_at IS 'Timestamp of comment creation.';
 COMMENT ON COLUMN public.post_comments.updated_at IS 'Timestamp of last comment update.';

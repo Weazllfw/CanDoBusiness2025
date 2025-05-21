@@ -1,10 +1,5 @@
 {
   "pages": {
-    "/auth/login/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/auth/login/page.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -16,20 +11,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/feed/page.js"
     ],
-    "/dashboard/companies/page": [
+    "/auth/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/companies/page.js"
+      "static/chunks/app/auth/login/page.js"
     ],
-    "/page": [
+    "/auth/signup/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/auth/signup/page.js"
     ],
-    "/not-found": [
+    "/company/new/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
+      "static/chunks/app/company/new/page.js"
+    ],
+    "/company/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/company/[id]/page.js"
     ]
   }
 }

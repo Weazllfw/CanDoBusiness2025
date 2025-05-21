@@ -9,6 +9,10 @@ import { type User } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase' // Ensure Database type is imported
 import { Analytics } from '@/lib/analytics'; // Import Analytics
 
+export type UserTrustLevel = Database['public']['Enums']['user_trust_level_enum'];
+// export type UserTrustLevel = 'NEW' | 'BASIC' | 'ESTABLISHED' | 'VERIFIED_CONTRIBUTOR'; // Temporary type
+export type FeedType = 'ALL' | 'VERIFIED_COMPANIES' | 'CONNECTIONS' | 'FOLLOWED_COMPANIES'; // Added
+
 export type PostCategory = 
   | 'general'
   | 'business_update'
@@ -35,22 +39,24 @@ export interface FeedPost {
   post_id: string;
   post_content: string;
   post_created_at: string;
-  post_category: string; // Should ideally be PostCategory type
-  post_media_urls?: string[];
-  post_media_types?: string[];
+  post_category: Database["public"]["Enums"]["post_category"];
+  post_media_urls: string[];
+  post_media_types: string[];
   author_user_id: string;
   author_name: string;
   author_avatar_url: string;
-  author_subscription_tier?: string;
-  company_id: string | null; // company_id can be null
-  company_name: string | null;
-  company_avatar_url: string | null;
+  author_subscription_tier: string; // Provided by RPC
+  author_trust_level?: UserTrustLevel; // Provided by RPC
+  author_is_verified?: boolean;      // Provided by RPC
+  acting_as_company_id?: string | null; 
+  acting_as_company_name?: string | null;
+  acting_as_company_logo_url?: string | null;
   like_count: number;
   comment_count: number;
   bookmark_count: number;
   is_liked_by_current_user: boolean;
   is_bookmarked_by_current_user: boolean;
-  is_network_post: number; // Assuming 0 or 1
+  feed_ranking_score: number; 
 }
 
 const POSTS_PER_PAGE = 10;
@@ -65,6 +71,8 @@ export default function FeedPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [feedType, setFeedType] = useState<FeedType>('ALL'); // Added
+  const [minimumTrustLevel, setMinimumTrustLevel] = useState<UserTrustLevel | undefined>(undefined); // Added, default to no filter
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -102,12 +110,14 @@ export default function FeedPage() {
         p_user_id: user.id,
         p_limit: POSTS_PER_PAGE,
         p_offset: (page - 1) * POSTS_PER_PAGE,
-        p_category: categoryParam
+        p_category: categoryParam,
+        p_feed_type: feedType, 
+        p_minimum_trust_level: minimumTrustLevel
       });
 
       if (rpcError) throw rpcError;
 
-      const newPosts = (data || []) as FeedPost[]; 
+      const newPosts = data || []; 
       setPosts((prevPosts) => page === 1 ? newPosts : [...prevPosts, ...newPosts]);
       setHasMore(newPosts.length === POSTS_PER_PAGE);
       setCurrentPage(page);
@@ -118,24 +128,21 @@ export default function FeedPage() {
     } finally {
       setIsLoadingPosts(false);
     }
-  }, [user, selectedCategory]);
+  }, [user, selectedCategory, feedType, minimumTrustLevel]);
 
-  // Reset and refetch when category changes
+  // Reset and refetch when category changes or filter changes
   useEffect(() => {
     if (user && !isUserLoading) {
       setPosts([]);
       setCurrentPage(1);
-      fetchPosts(1); // This will fetch posts for the new category
+      fetchPosts(1); 
 
-      // Track category selection as a search event
       if (selectedCategory !== '') {
-        // We don't have the result count immediately here, 
-        // but we can track the intent. Or, track after fetchPosts completes.
-        // For simplicity, tracking intent now.
-        Analytics.trackSearch(user.id, `category:${selectedCategory}`, 0); // resultCount can be updated later if needed
+        Analytics.trackSearch(user.id, `category:${selectedCategory}`, 0);
       }
+      // TODO: Add analytics for feedType and minimumTrustLevel changes if needed
     }
-  }, [selectedCategory, user, isUserLoading, fetchPosts]);
+  }, [selectedCategory, feedType, minimumTrustLevel, user, isUserLoading, fetchPosts]); // Added feedType, minimumTrustLevel
 
   useEffect(() => {
     // Fetch initial posts only when user is loaded and not null
@@ -196,6 +203,42 @@ export default function FeedPage() {
   return (
     <div className="flex gap-8 max-w-7xl mx-auto py-8">
       <div className="flex-1">
+        {/* TODO: Add UI controls for feedType and minimumTrustLevel here if desired */}
+        <div className="mb-4 p-4 bg-white shadow rounded-lg">
+          <h2 className="text-lg font-semibold mb-2">Feed Filters (Dev Preview)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="feedType" className="block text-sm font-medium text-gray-700">Feed Type</label>
+              <select 
+                id="feedType" 
+                value={feedType} 
+                onChange={(e) => setFeedType(e.target.value as FeedType)}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+              >
+                <option value="ALL">All Posts</option>
+                <option value="VERIFIED_COMPANIES">Verified Companies</option>
+                <option value="CONNECTIONS">Connections</option>
+                <option value="FOLLOWED_COMPANIES">Followed Companies</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="minimumTrustLevel" className="block text-sm font-medium text-gray-700">Minimum Trust Level (User Posts)</label>
+              <select 
+                id="minimumTrustLevel" 
+                value={minimumTrustLevel || ''} 
+                onChange={(e) => setMinimumTrustLevel(e.target.value as UserTrustLevel || undefined)}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+              >
+                <option value="">Any Trust Level</option>
+                <option value="NEW">New</option>
+                <option value="BASIC">Basic</option>
+                <option value="ESTABLISHED">Established</option>
+                <option value="VERIFIED_CONTRIBUTOR">Verified Contributor</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-6">
           <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
             Filter by Category

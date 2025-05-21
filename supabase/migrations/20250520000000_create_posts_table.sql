@@ -10,9 +10,9 @@ COMMENT ON TYPE public.content_status_enum IS 'Status of user-generated content 
 
 CREATE TABLE public.posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    company_id UUID NULL REFERENCES public.companies(id) ON DELETE CASCADE, -- Optional, if post is on behalf of a company
-    rfq_id UUID NULL REFERENCES public.rfqs(id) ON DELETE SET NULL, -- Optional, if post is related to an RFQ
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    acting_as_company_id UUID NULL REFERENCES public.companies(id) ON DELETE SET NULL, -- Optional: if post is made on behalf of a company
+    rfq_id UUID NULL REFERENCES public.rfqs(id) ON DELETE SET NULL, -- Optional: if post is an RFQ announcement
     content TEXT NOT NULL CHECK (char_length(content) > 0),
     media_url TEXT NULL, -- URL to image or video, if any
     media_type TEXT NULL, -- e.g., 'image/jpeg', 'video/mp4'
@@ -24,9 +24,9 @@ CREATE TABLE public.posts (
 
 -- Add comments to table and columns for clarity
 COMMENT ON TABLE public.posts IS 'Stores posts made by users or companies.';
-COMMENT ON COLUMN public.posts.user_id IS 'The user who authored the post.';
-COMMENT ON COLUMN public.posts.company_id IS 'The company on whose behalf the post is made (if applicable).';
-COMMENT ON COLUMN public.posts.rfq_id IS 'The RFQ related to the post (if applicable).';
+COMMENT ON COLUMN public.posts.user_id IS 'The user who created the post. If acting_as_company_id is set, this is the company admin/owner who posted.';
+COMMENT ON COLUMN public.posts.acting_as_company_id IS 'If the post is made on behalf of a company, this is the company ID.';
+COMMENT ON COLUMN public.posts.rfq_id IS 'Optional link to an RFQ if the post is an announcement for an RFQ.';
 COMMENT ON COLUMN public.posts.content IS 'The main textual content of the post.';
 COMMENT ON COLUMN public.posts.media_url IS 'URL to any attached media (image, video).';
 COMMENT ON COLUMN public.posts.media_type IS 'Type of media (e.g., ''image/jpeg'', ''video/mp4'').';
@@ -38,8 +38,8 @@ COMMENT ON COLUMN public.posts.updated_at IS 'Timestamp of last post update.';
 -- Create indexes for performance
 DROP INDEX IF EXISTS idx_posts_user_id;
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON public.posts(user_id);
-DROP INDEX IF EXISTS idx_posts_company_id;
-CREATE INDEX IF NOT EXISTS idx_posts_company_id ON public.posts(company_id);
+DROP INDEX IF EXISTS idx_posts_acting_as_company_id;
+CREATE INDEX IF NOT EXISTS idx_posts_acting_as_company_id ON public.posts(acting_as_company_id);
 DROP INDEX IF EXISTS idx_posts_rfq_id;
 CREATE INDEX IF NOT EXISTS idx_posts_rfq_id ON public.posts(rfq_id);
 DROP INDEX IF EXISTS idx_posts_created_at;

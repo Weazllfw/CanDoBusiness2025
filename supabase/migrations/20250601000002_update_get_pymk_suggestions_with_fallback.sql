@@ -50,6 +50,7 @@ WITH
       1 as priority -- Higher priority for connection-based suggestions
     FROM second_degree_connections sdc
     JOIN public.profiles p ON sdc.potential_suggestion_id = p.id
+    WHERE p.status = 'active' -- Suggest only active profiles
     ORDER BY sdc.mutual_connections_count DESC, p.created_at DESC -- Prioritize by mutual connections, then by newest profile
   ),
   -- 4. Fallback: Recently joined users (if not enough from connections)
@@ -68,6 +69,7 @@ WITH
       AND p.id NOT IN (SELECT connected_user_id FROM user_direct_connections)
       AND p.id NOT IN (SELECT potential_suggestion_id FROM ranked_suggestions) -- Avoid duplicates if a recent user was somehow a 2nd degree connection
       AND p.created_at >= (NOW() - INTERVAL '30 days') -- Define "recent"
+      AND p.status = 'active' -- Suggest only active profiles
     ORDER BY p.created_at DESC
   ),
   -- 5. Combine and limit
