@@ -1,19 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import type { Database } from '../../lib/database.types';
-import type { FeedPost } from '../feed/page';
+import type { Database } from '@/types/supabase';
+import type { FeedPost } from '@/types/feed';
 import PostFeed from '@/components/feed/PostFeed';
+import type { User } from '@supabase/supabase-js';
 
 interface PostWithRelations {
   id: string;
   content: string;
   created_at: string;
-  media_url: string | null;
-  media_type: string | null;
+  media_urls: string[] | null;
+  media_types: string[] | null;
   user_id: string;
+  category: Database["public"]["Enums"]["post_category"] | null;
+  acting_as_company_id: string | null;
   profiles: {
     id: string;
     name: string | null;
@@ -36,28 +39,42 @@ export default function BookmarksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
 
   const POSTS_PER_PAGE = 10;
 
-  const fetchBookmarkedPosts = async () => {
+  const fetchBookmarkedPosts = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('Error fetching user:', authError);
+        setError('Failed to authenticate. Please try logging in again.');
+        router.push('/auth/login');
+        setIsLoading(false);
+        return;
+      }
       
       if (!user) {
         router.push('/auth/login');
+        setIsLoading(false);
         return;
       }
+      setCurrentUser(user);
 
-      const { data: rawData, error } = await supabase
+      const { data: rawDataArray, error: postsError } = await supabase
         .from('posts')
         .select(`
           id,
           content,
           created_at,
-          media_url,
-          media_type,
+          media_urls,
+          media_types,
+          category,
+          acting_as_company_id,
           user_id,
           profiles!posts_user_id_fkey (
             id,
@@ -85,12 +102,18 @@ export default function BookmarksPage() {
         .order('created_at', { ascending: false })
         .limit(POSTS_PER_PAGE);
 
-      if (error) throw error;
+      if (postsError) throw postsError;
+      if (!rawDataArray) {
+        setPosts([]);
+        setHasMore(false);
+        setIsLoading(false);
+        return;
+      }
 
       // Transform the raw data to match our expected type
-      const data: PostWithRelations[] = rawData.map(post => ({
+      const data: PostWithRelations[] = rawDataArray.map((post: any) => ({
         ...post,
-        profiles: Array.isArray(post.profiles) ? post.profiles[0] : post.profiles
+        profiles: Array.isArray(post.profiles) ? post.profiles[0] : post.profiles,
       }));
 
       // Transform the data to match FeedPost type
@@ -98,21 +121,23 @@ export default function BookmarksPage() {
         post_id: post.id,
         post_content: post.content,
         post_created_at: post.created_at,
-        post_media_url: post.media_url,
-        post_media_type: post.media_type,
+        post_category: post.category,
+        post_media_urls: post.media_urls,
+        post_media_types: post.media_types,
         author_user_id: post.profiles.id,
         author_name: post.profiles.name || '',
         author_avatar_url: post.profiles.avatar_url || '',
         author_subscription_tier: post.profiles.subscription_tier,
-        company_id: post.profiles.company_id,
-        company_name: post.profiles.companies?.[0]?.name || null,
-        company_avatar_url: post.profiles.companies?.[0]?.avatar_url || null,
+        acting_as_company_id: post.acting_as_company_id,
+        acting_as_company_name: post.profiles.companies?.[0]?.name || null,
+        acting_as_company_logo_url: post.profiles.companies?.[0]?.avatar_url || null,
+        company_verification_status: null,
         like_count: (post.post_likes || []).length,
         comment_count: (post.post_comments || []).length,
         bookmark_count: (post.post_bookmarks || []).length,
         is_liked_by_current_user: (post.post_likes || []).some(like => like.user_id === user.id),
-        is_bookmarked_by_current_user: true, // Since these are bookmarked posts
-        is_network_post: 0
+        is_bookmarked_by_current_user: true,
+        feed_ranking_score: 0
       }));
 
       setPosts(transformedPosts);
@@ -123,7 +148,7 @@ export default function BookmarksPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase, router]);
 
   const loadMore = async () => {
     // Implement load more functionality if needed
@@ -131,7 +156,16 @@ export default function BookmarksPage() {
 
   useEffect(() => {
     fetchBookmarkedPosts();
-  }, []);
+  }, [fetchBookmarkedPosts]);
+
+  if (isLoading && !currentUser) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-2xl font-bold mb-6">Your Bookmarks</h1>
+        <p>Authenticating...</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -162,13 +196,14 @@ export default function BookmarksPage() {
       <h1 className="text-2xl font-bold mb-6">Your Bookmarks</h1>
       {posts.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">You haven't bookmarked any posts yet.</p>
+          <p className="text-gray-500">You haven&apos;t bookmarked any posts yet.</p>
         </div>
       ) : (
         <PostFeed
           initialPosts={posts}
           onLoadMore={loadMore}
           hasMore={hasMore}
+          currentUser={currentUser}
         />
       )}
     </div>

@@ -56,10 +56,8 @@ export default function NewCompanyPage() {
         // services: formData.services, (already spread)
         
         // Corrected mappings for fields that were mismatched or missing:
-        province: formData.province, // Was province_state
-        street_address: formData.street_address, // Was address_line1, address_line2 is not in form schema separately
-        contact_person_email: formData.contact_person_email, // Was contact_email
-        contact_person_phone: formData.contact_person_phone, // Was contact_phone
+        // REMOVED lines for province, street_address, contact_person_email, contact_person_phone
+        // as they are no longer in the simplified CompanyFormData for MVP
 
         // self_attestation_completed, business_number, public_presence_links are now in formData due to schema change
         // avatar_url and banner_url are also in formData
@@ -86,12 +84,12 @@ export default function NewCompanyPage() {
       if (logoFile) {
         const fileExt = logoFile.name.split('.').pop();
         const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `company-logos/${newCompany.id}/${fileName}`;
+        const filePath = `${newCompany.id}/${fileName}`;
 
         // console.log('[NewCompanyPage] Uploading logo. Company ID:', newCompany.id, 'File path:', filePath);
 
         const { error: uploadError } = await supabase.storage
-          .from('company_assets')
+          .from('company-logos')
           .upload(filePath, logoFile, {
             cacheControl: '3600',
             upsert: true, 
@@ -101,7 +99,9 @@ export default function NewCompanyPage() {
           toast.error(`Logo upload failed: ${uploadError.message}. Company created without logo.`);
         } else {
           // Update company with logo_url
-          const publicUrl = supabase.storage.from('company_assets').getPublicUrl(filePath).data.publicUrl;
+          const publicUrl = supabase.storage
+            .from('company-logos')
+            .getPublicUrl(filePath).data.publicUrl;
           const { error: updateError } = await supabase
             .from('companies')
             .update({ avatar_url: publicUrl })

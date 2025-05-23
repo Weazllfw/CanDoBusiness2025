@@ -5,14 +5,25 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 import type { User } from '@supabase/supabase-js';
 import Link from 'next/link';
+import Image from 'next/image';
 import UserConnectButton from '@/components/connections/UserConnectButton'; // Re-use for actions on pending if applicable, or simplified buttons
 import toast from 'react-hot-toast';
-import { ShieldCheckIcon } from '@heroicons/react/24/solid'; // For verification badge
+// import { ShieldCheckIcon } from '@heroicons/react/24/solid'; // No longer used if is_verified is removed from display
 
-export type UserTrustLevel = Database['public']['Enums']['user_trust_level_enum'];
+// New type for connected user from the simplified get_user_network RPC
+interface ConnectedUser {
+  connection_id: string; // UUID
+  user_id: string;       // UUID
+  name: string | null;
+  avatar_url: string | null;
+  connected_since: string; // TIMESTAMPTZ
+}
 
-// Type for connected user from get_user_network RPC
-type ConnectedUser = Database['public']['Functions']['get_user_network']['Returns'][number];
+// Removed UserTrustLevel export
+// export type UserTrustLevel = Database['public']['Enums']['user_trust_level_enum'];
+
+// Type for connected user from get_user_network RPC - REMOVED as RPC does not exist
+// type ConnectedUser = Database['public']['Functions']['get_user_network']['Returns'][number];
 
 // Types for requests from their respective RPCs
 type PendingRequest = Database['public']['Functions']['get_pending_user_connection_requests']['Returns'][number];
@@ -22,7 +33,7 @@ export default function NetworkPeoplePage() {
   const supabase = createClientComponentClient<Database>();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  const [connections, setConnections] = useState<ConnectedUser[]>([]);
+  const [connections, setConnections] = useState<ConnectedUser[]>([]); // Updated type
   const [pendingIncoming, setPendingIncoming] = useState<PendingRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
   
@@ -42,11 +53,11 @@ export default function NetworkPeoplePage() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch My Connections
+      // Fetch My Connections - REINSTATED RPC call with simplified structure
       const { data: connsData, error: connsError } = await supabase
         .rpc('get_user_network', { p_target_user_id: user.id });
       if (connsError) throw connsError;
-      setConnections(connsData || []);
+      setConnections((connsData as ConnectedUser[]) || []); // Updated type casting
 
       // Fetch Pending Incoming Requests
       const { data: incomingData, error: incomingError } = await supabase
@@ -77,8 +88,6 @@ export default function NetworkPeoplePage() {
 
   // Callback for UserConnectButton to refresh data upon status change
   const handleConnectionStatusChange = (newStatus: string, targetId: string) => {
-    // Potentially more granular update, but for now, just refetch all
-    // e.g. if newStatus is NONE after a disconnect, remove from connections list, etc.
     if (currentUser) {
         toast.success(`Connection status with user ${targetId} changed to ${newStatus}. Refreshing list.`);
         fetchNetworkData(currentUser);
@@ -87,24 +96,17 @@ export default function NetworkPeoplePage() {
 
   const renderConnectionsList = () => (
     <ul className="space-y-4">
-      {connections.length === 0 && <p>You have no connections yet.</p>}
+      {connections.length === 0 && <p>You have no connections yet.</p>} {/* Updated placeholder text slightly */}
       {connections.map(conn => (
         <li key={conn.user_id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg shadow">
           <Link href={`/users/${conn.user_id}`} className="flex items-center space-x-3 hover:underline">
-            <img src={conn.avatar_url || '/default-avatar.png'} alt={conn.name || 'User'} className="w-12 h-12 rounded-full object-cover" />
+            <Image src={conn.avatar_url || '/default-avatar.png'} alt={conn.name || 'User'} width={48} height={48} className="rounded-full object-cover" />
             <div>
                 <div className="flex items-center space-x-1">
                     <span className="font-semibold">{conn.name || 'User'}</span>
-                    {conn.is_verified && (
-                        <ShieldCheckIcon className="h-5 w-5 text-blue-500" title="Verified User" />
-                    )}
+                    {/* Removed trust level and verification display */}
                 </div>
                 <p className="text-xs text-gray-500">Connected since: {new Date(conn.connected_since).toLocaleDateString()}</p>
-                {conn.trust_level && (
-                    <span className={`mt-0.5 text-xs inline-block px-1.5 py-0.5 rounded-full ${ conn.trust_level === 'VERIFIED_CONTRIBUTOR' ? 'bg-green-100 text-green-700' : conn.trust_level === 'ESTABLISHED' ? 'bg-blue-100 text-blue-700' : conn.trust_level === 'BASIC' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700' }`}>
-                        {String(conn.trust_level).replace('_', ' ').toLowerCase().replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                    </span>
-                )}
             </div>
           </Link>
           {currentUser && (
@@ -121,7 +123,7 @@ export default function NetworkPeoplePage() {
       {pendingIncoming.map(req => (
         <li key={req.request_id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg shadow">
           <Link href={`/users/${req.requester_id}`} className="flex items-center space-x-3 hover:underline">
-            <img src={req.requester_avatar_url || '/default-avatar.png'} alt={req.requester_name || 'User'} className="w-12 h-12 rounded-full object-cover" />
+            <Image src={req.requester_avatar_url || '/default-avatar.png'} alt={req.requester_name || 'User'} width={48} height={48} className="rounded-full object-cover" />
             <div>
               <div className="flex items-center space-x-1">
                 <span className="font-semibold">{req.requester_name || 'User'}</span>
@@ -145,7 +147,7 @@ export default function NetworkPeoplePage() {
       {sentRequests.map(req => (
         <li key={req.request_id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg shadow">
           <Link href={`/users/${req.addressee_id}`} className="flex items-center space-x-3 hover:underline">
-            <img src={req.addressee_avatar_url || '/default-avatar.png'} alt={req.addressee_name || 'User'} className="w-12 h-12 rounded-full object-cover" />
+            <Image src={req.addressee_avatar_url || '/default-avatar.png'} alt={req.addressee_name || 'User'} width={48} height={48} className="rounded-full object-cover" />
             <div>
               <div className="flex items-center space-x-1">
                 <span className="font-semibold">{req.addressee_name || 'User'}</span>

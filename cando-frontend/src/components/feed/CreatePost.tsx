@@ -1,231 +1,255 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 import type { User } from '@supabase/supabase-js'
-import { PostCategory, POST_CATEGORY_LABELS } from '@/app/feed/page'
-import RichTextEditor from '../common/RichTextEditor'
-import FileUpload from '../messages/FileUpload'
-import { Analytics } from '@/lib/analytics'
-import { compressImage } from '@/lib/imageCompressionUtils'
+import Image from 'next/image';
+import { v4 as uuidv4 } from 'uuid';
+// import { PostCategory, POST_CATEGORY_LABELS } from '@/app/feed/page' // Removed for MVP
+// import RichTextEditor from '../common/RichTextEditor' // Removed for MVP
+// import FileUpload from '../messages/FileUpload' // Removed for MVP
+// import { Analytics } from '@/lib/analytics' // Removed for MVP
+// import { compressImage } from '@/lib/imageCompressionUtils' // Removed for MVP
 
+// Type for entities the user can post as (self or company)
 interface PostableEntity {
-  id: string; // user_id or company_id
+  id: string; // 'self' or company_id
   name: string;
   avatar_url?: string | null;
-  type: 'user' | 'company';
 }
 
 interface CreatePostProps {
   onPostCreated: () => void
+  // user prop was removed from feed/page.tsx, so we fetch current user here
 }
 
 export default function CreatePost({ onPostCreated }: CreatePostProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [content, setContent] = useState('')
-  const [mediaFileObjects, setMediaFileObjects] = useState<File[]>([])
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authorSubscriptionTier, setAuthorSubscriptionTier] = useState('REGULAR');
-  const [selectedCategory, setSelectedCategory] = useState<PostCategory>('general');
+  // const [authorSubscriptionTier, setAuthorSubscriptionTier] = useState('REGULAR'); // Removed for MVP
+  // const [selectedCategory, setSelectedCategory] = useState<PostCategory>('general'); // Removed for MVP
   
-  const [postableEntities, setPostableEntities] = useState<PostableEntity[]>([])
-  const [selectedPostAsEntityId, setSelectedPostAsEntityId] = useState<string | null>(null)
-  const [isFetchingEntities, setIsFetchingEntities] = useState(true)
+  const [postableEntities, setPostableEntities] = useState<PostableEntity[]>([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string>('self'); // Default to posting as self
+  const [isFetchingEntities, setIsFetchingEntities] = useState(true);
+
+  // const [selectedPostAsEntityId, setSelectedPostAsEntityId] = useState<string | null>(null) // Removed for MVP
 
   const supabase = createClientComponentClient<Database>()
 
-  useEffect(() => {
-    const fetchUserAndEntities = async () => {
-      setIsFetchingEntities(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-
-      if (user) {
-        // Fetch active subscription tier
-        const { data: subscriptionData, error: subscriptionError } = await supabase
-          .from('user_subscriptions')
-          .select('tier')
-          .eq('user_id', user.id)
-          .in('status', ['active', 'trialing'])
-          .order('created_at', { ascending: false })
-          .maybeSingle();
-
-        if (subscriptionError) {
-          console.error('Error fetching user subscription:', subscriptionError);
-        }
-        setAuthorSubscriptionTier(subscriptionData?.tier || 'REGULAR');
-
-        // Prepare user as a postable entity
-        const userEntity: PostableEntity = {
-          id: user.id,
-          name: user.user_metadata?.name || user.email || 'Yourself',
-          avatar_url: user.user_metadata?.avatar_url,
-          type: 'user',
-        };
-        let entities: PostableEntity[] = [userEntity];
-        setSelectedPostAsEntityId(userEntity.id); // Default to posting as user
-
-        // Fetch user's companies
-        const { data: companies, error: companiesError } = await supabase
-          .from('companies')
-          .select('id, name, avatar_url')
-          .eq('owner_id', user.id);
-
-        if (companiesError) {
-          console.error('Error fetching companies:', companiesError);
-        } else if (companies) {
-          const companyEntities: PostableEntity[] = companies.map(c => ({
-            id: c.id,
-            name: c.name || 'Unnamed Company',
-            avatar_url: c.avatar_url,
-            type: 'company',
-          }));
-          entities = [...entities, ...companyEntities];
-        }
-        setPostableEntities(entities);
-      } else {
-        setPostableEntities([]);
-        setSelectedPostAsEntityId(null);
-      }
-      setIsFetchingEntities(false);
+  const fetchPostableEntities = useCallback(async (user: User) => {
+    setIsFetchingEntities(true);
+    const selfEntity: PostableEntity = {
+      id: 'self',
+      name: user.user_metadata?.name || 'Yourself',
+      avatar_url: user.user_metadata?.avatar_url || null,
     };
-    fetchUserAndEntities();
+    let entities: PostableEntity[] = [selfEntity];
+
+    try {
+      const { data: companyUsers, error } = await supabase
+        .from('company_users')
+        .select('role, companies(id, name, avatar_url)')
+        .eq('user_id', user.id)
+        .in('role', ['OWNER', 'ADMIN']);
+
+      if (error) {
+        console.error('Error fetching user companies:', error);
+      } else if (companyUsers) {
+        const companyEntities = companyUsers.reduce((acc: PostableEntity[], cu) => {
+          // The select query now nests company details directly
+          const company = cu.companies as unknown as { id: string; name: string; avatar_url: string | null } | null; 
+          if (company) {
+            acc.push({
+              id: company.id,
+              name: company.name,
+              avatar_url: company.avatar_url,
+            });
+          }
+          return acc;
+        }, []);
+        entities = [...entities, ...companyEntities];
+      }
+    } catch (e) {
+      console.error('Exception fetching postable entities:', e);
+    }
+    setPostableEntities(entities);
+    setSelectedEntityId('self'); // Ensure default is self after fetching
+    setIsFetchingEntities(false);
   }, [supabase]);
 
-  const handleFileChange = (newFiles: File[]) => {
-    setMediaFileObjects(newFiles);
+  useEffect(() => {
+    const fetchUserAndEntities = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      if (user) {
+        await fetchPostableEntities(user);
+      }
+    };
+    fetchUserAndEntities();
+  }, [supabase, fetchPostableEntities]);
+
+  const handleMediaChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.type.startsWith('image/')) {
+        setMediaFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setMediaPreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setMediaFile(null);
+        setMediaPreview(null);
+        alert('Please select an image file (e.g., PNG, JPG).'); 
+      }
+    } else {
+      setMediaFile(null);
+      setMediaPreview(null);
+    }
   };
 
-  const removeSelectedFile = (index: number) => {
-    const newFiles = mediaFileObjects.filter((_, i) => i !== index);
-    setMediaFileObjects(newFiles);
+  const removeMedia = () => {
+    setMediaFile(null);
+    setMediaPreview(null);
+    const fileInput = document.getElementById('postMedia') as HTMLInputElement;
+    if (fileInput) {
+        fileInput.value = "";
+    }
   };
 
   const openModal = () => {
     setContent('');
-    setMediaFileObjects([]);
-    if (currentUser && postableEntities.length > 0) {
-        // Default to user or first entity if user is not found (should not happen if currentUser is set)
-        const userEntityExists = postableEntities.some(e => e.id === currentUser.id && e.type === 'user');
-        setSelectedPostAsEntityId(userEntityExists ? currentUser.id : postableEntities[0].id);
-    } else if (postableEntities.length > 0) {
-        setSelectedPostAsEntityId(postableEntities[0].id);
-    }
+    setMediaFile(null);
+    setMediaPreview(null);
+    setSelectedEntityId('self'); // Reset to self when opening modal
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setContent('');
-    setMediaFileObjects([]);
+    setMediaFile(null);
+    setMediaPreview(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if ((!content.trim() && mediaFileObjects.length === 0) || !currentUser || !selectedPostAsEntityId) return
-
-    const selectedEntity = postableEntities.find(entity => entity.id === selectedPostAsEntityId);
-    if (!selectedEntity) {
-        console.error("Selected posting entity not found");
-        // TODO: Add user feedback
-        return;
-    }
+    if ((!content.trim() && !mediaFile) || !currentUser) return
 
     try {
       setIsLoading(true)
-      let mediaUrls: string[] = [];
-      let mediaTypes: string[] = [];
+      let mediaUrl: string | null = null;
+      let mediaType: string | null = null;
 
-      for (const file of mediaFileObjects) {
-        const compressedFile = await compressImage(file); // Compress image
-        const fileExtension = compressedFile.name.split('.').pop();
-        const fileName = `${currentUser.id}_${Date.now()}.${fileExtension}`;
-        const filePath = `public/${fileName}`;
+      if (mediaFile) {
+        const fileExt = mediaFile.name.split('.').pop();
+        // Use selectedEntityId in path if it's a company, otherwise user_id
+        // const ownerEntityId = selectedEntityId === 'self' ? currentUser.id : selectedEntityId;
+        // const fileName = `${ownerEntityId}/${uuidv4()}.${fileExt}`; // Original fileName structure
+        // const filePath = `post-media/${fileName}`; // Original path, incorrect for RLS and bucket prefix
+        
+        // Corrected path for RLS: public/{user_id}/filename
+        // For MVP, all post media is uploaded to the current user's folder, regardless of selectedEntityId.
+        // The fileName itself can still retain the ownerEntityId for organization if desired, but the RLS path component must be currentUser.id.
+        const rlsCompliantFileName = `${selectedEntityId === 'self' ? currentUser.id : selectedEntityId}-${uuidv4()}.${fileExt}`;
+        const filePath = `public/${currentUser.id}/${rlsCompliantFileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('post_media')
-          .upload(filePath, compressedFile, {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          // .from('user_generated_content') // Old incorrect bucket name
+          .from('post_media') // Correct bucket name
+          .upload(filePath, mediaFile, {
             cacheControl: '3600',
-            upsert: false
+            upsert: false, 
           });
 
         if (uploadError) {
-          console.error('Error uploading file:', uploadError);
-          throw new Error(`File upload failed: ${uploadError.message}`);
+          console.error('Error uploading media:', uploadError);
+          alert(`Failed to upload image: ${uploadError.message}`);
+          setIsLoading(false);
+          return;
         }
-
+        
         const { data: publicUrlData } = supabase.storage
-          .from('post_media')
+          // .from('user_generated_content') // Old incorrect bucket name
+          .from('post_media') // Correct bucket name
           .getPublicUrl(filePath);
         
-        if (!publicUrlData || !publicUrlData.publicUrl) {
-            throw new Error('Could not get public URL for uploaded file.');
+        if (publicUrlData?.publicUrl) {
+          mediaUrl = publicUrlData.publicUrl;
+          mediaType = 'IMAGE';
+        } else {
+            console.error('Failed to get public URL for media');
+            alert('Image uploaded, but failed to get its public URL. Post will be text-only.');
         }
-        mediaUrls.push(publicUrlData.publicUrl);
-        mediaTypes.push(compressedFile.type); 
       }
 
-      const postData = {
+      const postData: any = {
         content: content.trim(),
-        user_id: currentUser.id, // Always the logged-in user
-        company_id: selectedEntity.type === 'company' ? selectedEntity.id : null, 
-        author_subscription_tier: authorSubscriptionTier, 
-        media_urls: mediaUrls,
-        media_types: mediaTypes,
-        category: selectedCategory,
+        user_id: currentUser.id, 
+        media_urls: mediaUrl ? [mediaUrl] : [],
+        media_types: mediaType ? [mediaType] : [],
+        acting_as_company_id: selectedEntityId === 'self' ? null : selectedEntityId,
       }
 
-      const { data: newPost, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('posts')
         .insert(postData)
-        .select()
-        .single(); // select().single() to get the created post back for analytics
 
       if (insertError) throw insertError
-      if (!newPost) throw new Error("Post creation did not return data.");
-
-      // Analytics
-      Analytics.trackPostCreate(
-        currentUser.id,
-        newPost.id,
-        mediaFileObjects.length > 0,
-        selectedCategory,
-        { // Additional metadata for post_create
-            postedAsType: selectedEntity.type,
-            postedAsEntityId: selectedEntity.id
-        }
-      );
 
       setContent('');
-      setMediaFileObjects([]);
-      setSelectedCategory('general');
+      setMediaFile(null);
+      setMediaPreview(null);
+      setSelectedEntityId('self'); // Reset selector
       setIsModalOpen(false)
       onPostCreated()
 
     } catch (error) {
       console.error('Error creating post:', error)
-      // TODO: Provide user feedback (e.g., toast notification)
+      alert(`Error creating post: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false)
     }
   }
 
+  if (!currentUser) {
+    // Optionally, render a login prompt or disable the create post button if user is not loaded/logged in
+    // For now, the button text will just be generic if currentUser is null.
+  }
+
+  const selectedDisplayEntity = postableEntities.find(e => e.id === selectedEntityId) || postableEntities[0];
+
   return (
     <>
       {/* Post Creation Box */}
       <div className="bg-white rounded-lg shadow p-4 mb-4">
-        <button
-          onClick={openModal}
-          className="w-full text-left px-4 py-3 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 focus:outline-none"
-        >
-          Got something to share, {currentUser?.user_metadata?.name || 'User'}?
-        </button>
+        <div className="flex items-center space-x-3">
+          {selectedDisplayEntity?.avatar_url ? (
+            <Image src={selectedDisplayEntity.avatar_url} alt={selectedDisplayEntity.name} width={40} height={40} className="rounded-full h-10 w-10 object-cover" />
+          ) : (
+            <span className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center text-white">
+              {selectedDisplayEntity?.name?.charAt(0).toUpperCase() || 'U'}
+            </span>
+          )}
+          <button
+            onClick={openModal}
+            disabled={!currentUser} 
+            className="flex-grow text-left px-4 py-3 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Got something to share, {selectedDisplayEntity?.name || 'User'}?
+          </button>
+        </div>
       </div>
 
       {/* Post Creation Modal */}
-      {isModalOpen && (
+      {isModalOpen && currentUser && (
         <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-auto">
             <div className="p-5 border-b border-gray-200 flex justify-between items-center">
@@ -236,97 +260,82 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
             </div>
 
             <form onSubmit={handleSubmit} className="p-5">
-              {/* Post As Selector */}
-              {postableEntities.length > 1 && !isFetchingEntities && (
+              {/* Posting As Selector */}
+              {postableEntities.length > 1 && (
                 <div className="mb-4">
-                  <label htmlFor="postAs" className="block text-sm font-medium text-gray-700 mb-1">
-                    Post as
-                  </label>
-                  <select
-                    id="postAs"
-                    value={selectedPostAsEntityId || ''}
-                    onChange={(e) => setSelectedPostAsEntityId(e.target.value)}
-                    className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                  <label htmlFor="postAsEntity" className="block text-sm font-medium text-gray-700 mb-1">Post as:</label>
+                  <select 
+                    id="postAsEntity"
+                    value={selectedEntityId}
+                    onChange={(e) => setSelectedEntityId(e.target.value)}
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                     disabled={isFetchingEntities}
                   >
-                    {postableEntities.map(entity => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.name} ({entity.type})
-                      </option>
-                    ))}
+                    {isFetchingEntities ? (
+                        <option value="self" disabled>Loading entities...</option>
+                    ) : (
+                        postableEntities.map(entity => (
+                            <option key={entity.id} value={entity.id}>{entity.name}</option>
+                        ))
+                    )}
                   </select>
                 </div>
               )}
-              {isFetchingEntities && <p className="text-sm text-gray-500 mb-2">Loading posting options...</p>}
 
-              {/* Category Selection */}
               <div className="mb-4">
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
+                <label htmlFor="postContent" className="block text-sm font-medium text-gray-700 mb-1">
+                  Your thoughts (optional if adding an image)
                 </label>
-                <select
-                  id="category"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value as PostCategory)}
-                  className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-                >
-                  {Object.entries(POST_CATEGORY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Content Area - Rich Text Editor */}
-              <div className="mb-4">
-                <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">
-                  What's on your mind?
-                </label>
-                <RichTextEditor content={content} onChange={setContent} placeholder={`What\'s on your mind, ${currentUser?.user_metadata?.name || 'User'}?`} />
-              </div>
-              
-              {/* File Upload - Using FileUpload component */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Add images (up to 5)
-                </label>
-                <FileUpload 
-                  files={mediaFileObjects}
-                  onFilesChange={handleFileChange} 
-                  maxFiles={5} 
+                <textarea
+                  id="postContent"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="What's on your mind?"
+                  rows={4}
+                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
                 />
-                {/* Display selected files and remove button */}
-                {mediaFileObjects.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {mediaFileObjects.map((file, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                        <span>{file.name} ({(file.size / 1024).toFixed(2)} KB)</span>
-                        <button
-                          type="button"
-                          onClick={() => removeSelectedFile(index)}
-                          className="text-red-500 hover:text-red-700 font-semibold"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              <div className="flex justify-end items-center pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 mr-3"
+              <div className="mb-4">
+                <label htmlFor="postMedia" className="block text-sm font-medium text-gray-700 mb-1">
+                  Add an image (optional)
+                </label>
+                <input
+                  type="file"
+                  id="postMedia"
+                  accept="image/*"
+                  onChange={handleMediaChange}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                />
+              </div>
+
+              {mediaPreview && (
+                <div className="mb-4 relative">
+                  <Image src={mediaPreview} alt="Media preview" width={400} height={300} objectFit="contain" className="rounded-md max-h-60 w-auto" />
+                  <button 
+                    type="button" 
+                    onClick={removeMedia}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 text-xs"
+                    aria-label="Remove image"
+                  >
+                    X
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end space-x-3">
+                <button 
+                  type="button" 
+                  onClick={closeModal} 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                  disabled={isLoading}
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={isLoading || (!content.trim() && mediaFileObjects.length === 0) || !selectedPostAsEntityId || isFetchingEntities}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
+                <button 
+                  type="submit" 
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                  disabled={isLoading || (!content.trim() && !mediaFile)}
                 >
                   {isLoading ? 'Posting...' : 'Post'}
                 </button>
@@ -336,5 +345,5 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
         </div>
       )}
     </>
-  )
+  );
 } 

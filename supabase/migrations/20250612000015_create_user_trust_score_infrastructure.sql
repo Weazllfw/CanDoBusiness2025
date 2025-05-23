@@ -59,9 +59,15 @@ BEGIN
     v_score := internal.calculate_user_trust_score_points(p_user_id);
     v_new_trust_level := internal.get_trust_level_from_score(v_score);
 
+    -- Temporarily disable triggers for this specific update -- Removed due to permission issues and problematic nature.
+    -- SET session_replication_role = 'replica';
+
     UPDATE public.profiles
     SET trust_level = v_new_trust_level
     WHERE id = p_user_id;
+
+    -- Re-enable triggers
+    -- SET session_replication_role = 'origin';
 END;
 $$;
 

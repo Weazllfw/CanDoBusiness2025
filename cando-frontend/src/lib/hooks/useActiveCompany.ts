@@ -33,7 +33,7 @@ export function useActiveCompany(userId: string, initialCompany?: Company) {
     }
 
     loadCompanies()
-  }, [userId, supabase])
+  }, [userId, supabase, activeCompany])
 
   const switchCompany = (companyId: string) => {
     const company = companies.find(c => c.id === companyId)

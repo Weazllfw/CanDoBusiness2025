@@ -125,7 +125,8 @@ export default function CompanySelector({ currentUserId, onCompanySelected }: Co
     fetchUserCompanies();
   // selectedCompany removed from deps to avoid potential loops if onCompanySelected causes re-renders.
   // localStorage logic will handle re-selection on mount.
-  }, [currentUserId, supabase, onCompanySelected]);
+  // Re-adding selectedCompany based on linter feedback. If this causes issues, will re-evaluate.
+  }, [currentUserId, supabase, onCompanySelected, selectedCompany]);
 
   const handleSelectCompany = (company: Company) => {
     setSelectedCompany(company);

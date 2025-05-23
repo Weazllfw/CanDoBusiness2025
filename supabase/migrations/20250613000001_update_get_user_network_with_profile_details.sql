@@ -8,8 +8,6 @@ RETURNS TABLE (
     user_id UUID,
     name TEXT,
     avatar_url TEXT,
-    trust_level public.user_trust_level_enum,
-    is_verified BOOLEAN,
     connected_since TIMESTAMPTZ
 )
 LANGUAGE plpgsql
@@ -39,8 +37,6 @@ BEGIN
             p.id AS user_id,
             p.name,
             p.avatar_url,
-            p.trust_level,
-            p.is_verified,
             uc.responded_at AS connected_since
         FROM public.user_connections uc
         JOIN public.profiles p ON 
@@ -56,4 +52,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_user_network(UUID) 
-IS 'Returns profile details (including trust level and verification status) of users connected to p_target_user_id, respecting the is_network_public privacy flag. Admins and profile owners can always view.'; 
+IS 'Returns profile details of users connected to p_target_user_id, respecting the is_network_public privacy flag. Admins and profile owners can always view. MVP version: user trust level and user verification status removed.'; 

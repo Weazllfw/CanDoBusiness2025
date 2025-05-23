@@ -1,7 +1,10 @@
 {
-  "/auth/signup/page": "app/auth/signup/page.js",
-  "/auth/login/page": "app/auth/login/page.js",
-  "/company/new/page": "app/company/new/page.js",
+  "/not-found": "app/not-found.js",
   "/feed/page": "app/feed/page.js",
-  "/company/[id]/page": "app/company/[id]/page.js"
+  "/auth/signup/page": "app/auth/signup/page.js",
+  "/company/new/page": "app/company/new/page.js",
+  "/settings/account/page": "app/settings/account/page.js",
+  "/company/[id]/page": "app/company/[id]/page.js",
+  "/page": "app/page.js",
+  "/users/[id]/page": "app/users/[id]/page.js"
 }

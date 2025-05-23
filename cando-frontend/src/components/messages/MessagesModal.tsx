@@ -15,7 +15,6 @@ interface MessagesModalProps {
 }
 
 type AdministeredCompany = Database['public']['Functions']['get_user_administered_companies']['Returns'][number];
-// type AdministeredCompany = { id: string; name: string | null; avatar_url: string | null }; // Temporary type
 
 export default function MessagesModal({ isOpen, onClose }: MessagesModalProps) {
   const { user } = useAuth()

@@ -52,8 +52,8 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
       });
 
       if (rpcError) throw rpcError;
-      const rpcData = data as any[] || [];
-      const formattedSuggestions: Suggestion[] = rpcData.map((s: any) => ({
+      const rpcData: CymkSuggestion[] = data || [];
+      const formattedSuggestions: Suggestion[] = rpcData.map((s: CymkSuggestion) => ({
         id: s.suggested_company_id,
         name: s.company_name || 'CanDo Company',
         avatar_url: s.company_avatar_url,
@@ -82,7 +82,7 @@ const CompaniesYouMayKnow: React.FC<CompaniesYouMayKnowProps> = () => {
     } else {
       if (!currentUser && isLoading) setIsLoading(false);
     }
-  }, [currentUser, fetchSuggestions]);
+  }, [currentUser, fetchSuggestions, isLoading]);
 
   const handleFollow = useCallback(async (companyId: string): Promise<boolean> => {
     if (!currentUser) return false;

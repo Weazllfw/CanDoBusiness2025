@@ -44,7 +44,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({ suggestion, currentUser
     <div className="flex items-start space-x-3 py-3">
       <div className="flex-shrink-0 h-10 w-10">
         {suggestion.avatar_url && suggestion.avatar_url.includes('api.dicebear.com') ? (
-          <img src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200 object-cover" />
+          <Image src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200 object-cover" />
         ) : suggestion.avatar_url ? (
           <Image src={suggestion.avatar_url} alt={suggestion.name} width={40} height={40} className="rounded-full bg-gray-200 object-cover" />
         ) : (

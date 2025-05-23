@@ -10,13 +10,13 @@ import { BuildingOffice2Icon } from '@heroicons/react/24/outline';
 import CompanyConnectButton from '@/components/connections/CompanyConnectButton';
 import toast from 'react-hot-toast';
 
-// Updated interface based on get_company_network_details and needs
+// Updated interface based on get_company_connections RPC
 interface ConnectedCompany {
-  id: string; // This will be target_company_id
-  name: string; // target_company_name
-  avatar_url?: string | null; // target_company_avatar_url
-  industry?: string | null; // target_company_industry
-  // connection_status_with_acting_company: string | null; // For connect button logic, handled by button itself
+  connected_company_id: string; 
+  name: string | null;
+  avatar_url: string | null; 
+  industry: string | null; 
+  connected_at: string;
 }
 
 // Type for the raw data from get_company_network_details RPC
@@ -84,23 +84,21 @@ export default function CompanyNetworkPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Use get_company_network_details RPC
-      const { data, error: rpcError } = await supabase.rpc('get_company_network_details', {
-        p_acting_company_id: currentActingCompanyId,
-      } as any); // Use 'as any' for parameters if types are very stale
+      // Use get_company_connections RPC
+      const { data, error: rpcError } = await supabase.rpc('get_company_connections', {
+        p_company_id: currentActingCompanyId,
+      });
 
       if (rpcError) throw rpcError;
       
-      const rpcData = data as any[] || []; // Use 'as any[]' for incoming data
+      const rpcCallResult = data || [];
       
-      // Filter for only ACCEPTED connections to display in this "Company Network" list
-      const acceptedConnections = rpcData.filter(c => c.connection_status_with_acting_company === 'ACCEPTED');
-
-      const mappedData: ConnectedCompany[] = acceptedConnections.map(c => ({
-        id: c.target_company_id, 
-        name: c.target_company_name || 'Unnamed Company',
-        avatar_url: c.target_company_avatar_url,
-        industry: c.target_company_industry,
+      const mappedData: ConnectedCompany[] = rpcCallResult.map(c => ({
+        connected_company_id: c.connected_company_id,
+        name: c.name || 'Unnamed Company',
+        avatar_url: c.avatar_url,
+        industry: c.industry,
+        connected_at: c.connected_at
       }));
 
       setConnectedCompanies(mappedData);
@@ -180,14 +178,14 @@ export default function CompanyNetworkPage() {
       {connectedCompanies.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {connectedCompanies.map((company) => (
-            <div key={company.id} className="bg-white rounded-lg shadow p-5 hover:shadow-lg transition-shadow flex flex-col justify-between">
+            <div key={company.connected_company_id} className="bg-white rounded-lg shadow p-5 hover:shadow-lg transition-shadow flex flex-col justify-between">
               <div> {/* Content wrapper */}
-                <Link href={`/company/${company.id}`} className="group">
+                <Link href={`/company/${company.connected_company_id}`} className="group">
                   <div className="flex items-center mb-3">
                     {company.avatar_url ? (
                       <Image
                         src={company.avatar_url}
-                        alt={company.name}
+                        alt={company.name || 'Company'}
                         width={48}
                         height={48}
                         className="rounded-full mr-4 object-cover bg-gray-100"
@@ -198,8 +196,8 @@ export default function CompanyNetworkPage() {
                       </div>
                     )}
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 group-hover:text-primary-600 truncate" title={company.name}>
-                        {company.name}
+                      <h2 className="text-lg font-semibold text-gray-900 group-hover:text-primary-600 truncate" title={company.name || 'Company'}>
+                        {company.name || 'Company'}
                       </h2>
                       {company.industry && (
                         <p className="text-sm text-gray-600 truncate">{company.industry}</p>
@@ -212,15 +210,15 @@ export default function CompanyNetworkPage() {
               {/* Actions: View Profile and Connect Button */}
               <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0 sm:space-x-2">
                 <Link 
-                  href={`/company/${company.id}`} 
+                  href={`/company/${company.connected_company_id}`} 
                   className="text-sm font-medium text-primary-600 hover:text-primary-700 whitespace-nowrap">
                   View Profile
                 </Link>
-                {currentUser && actingCompanyId && actingCompanyId !== company.id && (
+                {currentUser && actingCompanyId && actingCompanyId !== company.connected_company_id && (
                   <CompanyConnectButton 
                     currentUser={currentUser} 
                     actingCompanyId={actingCompanyId}
-                    targetCompanyId={company.id} 
+                    targetCompanyId={company.connected_company_id} 
                     onStatusChange={handleConnectionStatusChange}
                   />
                 )}

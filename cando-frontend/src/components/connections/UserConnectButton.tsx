@@ -79,13 +79,13 @@ const UserConnectButton: React.FC<UserConnectButtonProps> = ({ targetUserId, cur
         lastReportedStatusRef.current = errorStatus;
       }
     }
-  }, [supabase, targetUserId, currentUser?.id, onStatusChange]);
+  }, [supabase, targetUserId, currentUser, onStatusChange]);
 
   useEffect(() => {
     if (currentUser && targetUserId) {
       fetchConnectionStatus();
     }
-  }, [fetchConnectionStatus, currentUser?.id, targetUserId]);
+  }, [fetchConnectionStatus, currentUser, targetUserId]);
 
   const handleSendRequest = async () => {
     if (!currentUser) return;

@@ -63,7 +63,7 @@ const PeopleYouMayKnow: React.FC<PeopleYouMayKnowProps> = () => {
     } else if (!currentUser) {
       if (isLoading) setIsLoading(false); 
     }
-  }, [currentUser, fetchSuggestions]);
+  }, [currentUser, fetchSuggestions, isLoading]);
 
   const handleConnectionStatusChange = useCallback((receivedNewStatus: string, receivedTargetId: string) => {
     console.log(`[PYMK] Connection status for ${receivedTargetId} changed to ${receivedNewStatus}. Suppressing list refresh for now.`);
@@ -72,7 +72,7 @@ const PeopleYouMayKnow: React.FC<PeopleYouMayKnowProps> = () => {
       // This means the PYMK list won't auto-update on status change from here.
       // fetchSuggestions(currentUser.id);
     // }
-  }, [currentUser?.id, fetchSuggestions]);
+  }, []);
   
   if (isLoading) {
     return (

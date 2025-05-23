@@ -8,7 +8,6 @@ CREATE OR REPLACE FUNCTION public.get_feed_posts(
     p_limit INTEGER DEFAULT 10,
     p_offset INTEGER DEFAULT 0,
     p_feed_type TEXT DEFAULT 'ALL', -- 'ALL', 'VERIFIED_COMPANIES', 'PEOPLE_ONLY', 'CONNECTIONS_ONLY', 'FOLLOWED_ONLY'
-    p_minimum_trust_level public.user_trust_level_enum DEFAULT NULL,
     p_category public.post_category DEFAULT NULL -- Added category filter
 )
 RETURNS TABLE (
@@ -22,8 +21,6 @@ RETURNS TABLE (
     author_name TEXT,
     author_avatar_url TEXT,
     author_subscription_tier TEXT, -- Added
-    author_trust_level public.user_trust_level_enum,
-    author_is_verified BOOLEAN,
     acting_as_company_id UUID,
     acting_as_company_name TEXT,
     acting_as_company_logo_url TEXT,
@@ -55,8 +52,6 @@ BEGIN
             author_profile.name AS author_name,
             author_profile.avatar_url AS author_avatar_url,
             p.author_subscription_tier AS author_subscription_tier, -- Added (from posts table)
-            author_profile.trust_level AS author_trust_level,
-            author_profile.is_verified AS author_is_verified,
             p.acting_as_company_id,
             acting_company.name AS acting_as_company_name,
             acting_company.avatar_url AS acting_as_company_logo_url,
@@ -102,8 +97,6 @@ BEGIN
         pwd.author_name,
         pwd.author_avatar_url,
         pwd.author_subscription_tier, -- Added
-        pwd.author_trust_level,
-        pwd.author_is_verified,
         pwd.acting_as_company_id,
         pwd.acting_as_company_name,
         pwd.acting_as_company_logo_url,
@@ -119,15 +112,6 @@ BEGIN
             (pwd.like_count * 2) +
             (pwd.comment_count * 3) +
             (CASE WHEN pwd.acting_as_company_id IS NOT NULL AND pwd.company_verification_status IN ('TIER1_VERIFIED', 'TIER2_FULLY_VERIFIED') THEN 100 ELSE 0 END) + -- Boost for verified company post
-            (CASE WHEN pwd.acting_as_company_id IS NULL AND pwd.author_is_verified THEN 75 ELSE 0 END) + -- Boost for verified individual post
-            (CASE WHEN pwd.acting_as_company_id IS NULL THEN
-                CASE pwd.author_trust_level
-                    WHEN 'VERIFIED_CONTRIBUTOR' THEN 50
-                    WHEN 'ESTABLISHED' THEN 30
-                    WHEN 'BASIC' THEN 10
-                    ELSE 0
-                END
-             ELSE 0 END) +
             (CASE WHEN p_feed_type = 'CONNECTIONS_ONLY' AND EXISTS (SELECT 1 FROM internal.get_user_connection_ids(v_current_user_id) ucid WHERE ucid.connected_user_id = pwd.author_user_id) THEN 200 ELSE 0 END) + -- Corrected ucid access
             (CASE WHEN p_feed_type = 'FOLLOWED_ONLY' AND EXISTS (SELECT 1 FROM public.user_company_follows ucf WHERE ucf.user_id = v_current_user_id AND ucf.company_id = pwd.acting_as_company_id) THEN 150 ELSE 0 END) -- Boost for followed companies
             -- TODO: Add boost for posts from users followed by current user (requires user_follows_user table)
@@ -142,8 +126,6 @@ BEGIN
          (p_feed_type = 'FOLLOWED_ONLY' AND pwd.acting_as_company_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.user_company_follows ucf WHERE ucf.user_id = v_current_user_id AND ucf.company_id = pwd.acting_as_company_id))
          -- TODO: Add filter for posts from users followed by current user
         )
-        AND
-        (p_minimum_trust_level IS NULL OR (pwd.acting_as_company_id IS NULL AND pwd.author_trust_level >= p_minimum_trust_level))
 
     ORDER BY feed_ranking_score DESC, pwd.post_created_at DESC
     LIMIT p_limit
@@ -153,10 +135,10 @@ $$;
 
 -- Drop the old grant if it exists with the old signature, then create new one
 DROP FUNCTION IF EXISTS public.get_feed_posts(UUID, INTEGER, INTEGER, TEXT, public.user_trust_level_enum);
-GRANT EXECUTE ON FUNCTION public.get_feed_posts(UUID, INTEGER, INTEGER, TEXT, public.user_trust_level_enum, public.post_category) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_feed_posts(UUID, INTEGER, INTEGER, TEXT, public.post_category) TO authenticated;
 
-COMMENT ON FUNCTION public.get_feed_posts(UUID, INTEGER, INTEGER, TEXT, public.user_trust_level_enum, public.post_category) IS 'Retrieves posts for a user feed with various filtering and ranking options. Includes author and company details, engagement counts, user interaction status, post category, media, and subscription tier.';
+COMMENT ON FUNCTION public.get_feed_posts(UUID, INTEGER, INTEGER, TEXT, public.post_category) IS 'Retrieves posts for a user feed with various filtering and ranking options. Includes author and company details, engagement counts, user interaction status, post category, media, and subscription tier. MVP version: trust level features removed.';
 
 DO $$ BEGIN
-  RAISE NOTICE 'RPC function get_feed_posts updated with category filter, media fields, subscription tier, and corrected ranking score name.';
+  RAISE NOTICE 'RPC function get_feed_posts updated for MVP: category filter, media fields, subscription tier, and simplified ranking score. Trust level features removed.';
 END $$; 

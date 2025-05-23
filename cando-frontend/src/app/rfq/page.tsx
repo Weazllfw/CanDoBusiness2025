@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 import Link from 'next/link'
@@ -25,36 +25,7 @@ export default function RFQListPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const supabase = createClientComponentClient<Database>()
 
-  useEffect(() => {
-    loadRFQs()
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-    };
-    fetchUser();
-  }, [supabase])
-
-  const filteredRFQs = rfqs.filter(rfq =>
-    (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  )
-
-  useEffect(() => {
-    if (currentUser && searchTerm.trim() !== '') {
-      const handler = setTimeout(() => {
-        const currentFilteredCount = rfqs.filter(rfq =>
-          (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-          (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-          (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-        ).length;
-        Analytics.trackSearch(currentUser.id, searchTerm, currentFilteredCount);
-      }, 500);
-      return () => clearTimeout(handler);
-    }
-  }, [searchTerm, currentUser, rfqs]);
-
-  const loadRFQs = async () => {
+  const loadRFQs = useCallback(async () => {
     try {
       setIsLoading(true)
       const { data, error } = await supabase
@@ -77,7 +48,36 @@ export default function RFQListPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadRFQs();
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    fetchUser();
+  }, [supabase, loadRFQs]);
+
+  const filteredRFQs = rfqs.filter(rfq =>
+    (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+  )
+
+  useEffect(() => {
+    if (currentUser && searchTerm.trim() !== '') {
+      const handler = setTimeout(() => {
+        const currentFilteredCount = rfqs.filter(rfq =>
+          (rfq.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+          (rfq.description?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+          (rfq.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+        ).length;
+        Analytics.trackSearch(currentUser.id, searchTerm, currentFilteredCount);
+      }, 500);
+      return () => clearTimeout(handler);
+    }
+  }, [searchTerm, currentUser, rfqs]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

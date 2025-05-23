@@ -119,10 +119,10 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
   }, [supabase]);
 
   // New function to check if current user is admin of THIS company profile
-  const checkIfCurrentUserIsAdmin = async (companyId: string, userId: string) => {
+  const checkIfCurrentUserIsAdmin = useCallback(async (companyId: string, userId: string) => {
     if (!supabase || !userId || !companyId) return;
     try {
-      const { data, error } = await (supabase.rpc as any)('check_if_user_is_company_admin', {
+      const { data, error } = await supabase.rpc('check_if_user_is_company_admin', {
         p_target_company_id: companyId,
         p_user_id_to_check: userId,
       });
@@ -132,7 +132,7 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
       console.error('Error checking admin status for current company profile:', err);
       setIsCurrentUserAdminOfThisCompany(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     if (companyId) {
@@ -212,14 +212,14 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
 
     try {
       if (isFollowing) {
-        const { error: unfollowError } = await (supabase.rpc as any)('unfollow_company', {
+        const { error: unfollowError } = await supabase.rpc('unfollow_company', {
           p_company_id: companyId,
         });
         if (unfollowError) throw unfollowError;
         setIsFollowing(false);
         toast.success(`Unfollowed ${companyNameToDisplay}`);
       } else {
-        const { error: followError } = await (supabase.rpc as any)('follow_company', {
+        const { error: followError } = await supabase.rpc('follow_company', {
           p_company_id: companyId,
         });
         if (followError) throw followError;
@@ -282,12 +282,12 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      {/* Banner Image */}
-      {company.banner_url && (
+      {/* Banner Image - REMOVED FOR MVP */}
+      {/* {company.banner_url && (
         <div className="mb-6 h-48 md:h-64 rounded-lg overflow-hidden relative bg-gray-200">
           <Image src={company.banner_url} alt={`${company.name || 'Company'} banner`} layout="fill" objectFit="cover" />
         </div>
-      )}
+      )} */}
 
       {/* Verification Banners - Placed here */}
       {isOwner && companyId && (company.verification_status === 'UNVERIFIED' || company.verification_status === 'TIER1_REJECTED') && (
@@ -308,10 +308,13 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
 
       {isOwner && companyId && company.verification_status === 'TIER1_VERIFIED' && (
         <div className="mb-6 p-4 border border-green-300 bg-green-50 rounded-md">
-          <h2 className="text-lg font-semibold text-green-700 mb-2">🌟 Tier 1 Verified!</h2>
-          <p className="text-sm text-green-600 mb-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-green-700">🌟 Tier 1 Verified!</h2>
+            {/* Placeholder for a badge or icon if available */}
+          </div>
+          <p className="text-sm text-green-600 mt-1 mb-3">
             Congratulations! This company is Tier 1 Verified. 
-            Apply for Tier 2 Verification for the highest level of trust and a "Fully Verified Business" badge.
+            Apply for Tier 2 Verification for the highest level of trust and a &quot;Fully Verified Business&quot; badge.
           </p>
           <Link 
             href={`/company/${companyId}/apply-for-tier2-verification`}
@@ -392,6 +395,32 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
 
         <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
           <dl className="sm:divide-y sm:divide-gray-200">
+            {/* ADDED: Owner Information Display */}
+            {company.owner_id && (company.owner_name || company.owner_avatar_url) && (
+              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt className="text-sm font-medium text-gray-500">Owned by</dt>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  <Link href={`/users/${company.owner_id}`} className="flex items-center space-x-3 group">
+                    {company.owner_avatar_url ? (
+                      <Image 
+                        src={company.owner_avatar_url} 
+                        alt={company.owner_name || 'Owner avatar'} 
+                        width={32} 
+                        height={32} 
+                        className="h-8 w-8 rounded-full object-cover group-hover:ring-2 group-hover:ring-primary-500"
+                      />
+                    ) : (
+                      <span className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs group-hover:ring-2 group-hover:ring-primary-500">
+                        {company.owner_name ? company.owner_name.charAt(0).toUpperCase() : 'U'}
+                      </span>
+                    )}
+                    <span className="font-medium group-hover:underline group-hover:text-primary-600">
+                      {company.owner_name || 'View Profile'}
+                    </span>
+                  </Link>
+                </dd>
+              </div>
+            )}
             {company.description && (
               <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Description</dt>
@@ -408,98 +437,11 @@ export default function CompanyProfilePage({ params }: CompanyPageProps) {
                 </dd>
               </div>
             )}
-             {company.year_founded && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Year Founded</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{company.year_founded}</dd>
-              </div>
-            )}
-            {company.business_type && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Business Type</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{company.business_type}</dd>
-              </div>
-            )}
-            {company.employee_count && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Employee Count</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{company.employee_count}</dd>
-              </div>
-            )}
-            {company.revenue_range && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Revenue Range</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{company.revenue_range}</dd>
-              </div>
-            )}
-
-            {/* Address Section */}
-            {(company.street_address || company.city || company.province || company.postal_code || company.metro_area) && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Location</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                  {company.street_address && <div>{company.street_address}</div>}
-                  <div>
-                    {company.city && <span>{company.city}{company.province ? ', ' : ''}</span>}
-                    {company.province && <span>{company.province} </span>}
-                    {company.postal_code && <span>{company.postal_code}</span>}
-                  </div>
-                  {company.metro_area && <div>Metropolitan Area: {company.metro_area === 'OTHER' ? company.other_metro_specify : company.metro_area}</div>}
-                </dd>
-              </div>
-            )}
-            
-            {/* Contact Section */}
-             {(company.contact_name || company.contact_email || company.contact_phone) && (
-              <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Contact</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                  {company.contact_name && <p>{company.contact_name}</p>}
-                  {company.contact_email && <p><a href={`mailto:${company.contact_email}`} className="text-primary-600 hover:text-primary-800">{company.contact_email}</a></p>}
-                  {company.contact_phone && <p>{company.contact_phone}</p>}
-                </dd>
-              </div>
-            )}
-            
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              {renderArrayField("Services Offered", company.services)}
-            </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              {renderArrayField("Certifications", company.certifications)}
-            </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              {renderArrayField("Tags/Keywords", company.tags)}
-            </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-             {renderSocialMediaLinks(company.social_media_links)}
-            </div>
-            
-            {/* Verification Status Display */}
-            {company.verification_tier && (
-                 <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Verification Status</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            company.verification_tier?.includes('VERIFIED') ? 'bg-green-100 text-green-800' :
-                            company.verification_tier?.includes('PENDING') ? 'bg-yellow-100 text-yellow-800' :
-                            company.verification_tier?.includes('REJECTED') ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                        }`}>
-                            {company.verification_tier?.replace('_', ' ') || company.verification_status?.replace('_', ' ') || 'Not Verified'}
-                        </span>
-                        {(company.verification_tier === 'UNVERIFIED' || company.verification_tier === 'TIER1_REJECTED') && isOwner && (
-                            <Link href={`/company/${company.id}/apply-for-verification`} className="ml-4 text-sm text-primary-600 hover:text-primary-800">
-                                Apply for Tier 1
-                            </Link>
-                        )}
-                        {company.verification_tier === 'TIER1_VERIFIED' && isOwner && (
-                             <Link href={`/company/${company.id}/apply-for-tier2-verification`} className="ml-4 text-sm text-primary-600 hover:text-primary-800">
-                                Apply for Tier 2
-                            </Link>
-                        )}
-                    </dd>
-                </div>
-            )}
+            {/* REMOVED non-MVP fields: year_founded, business_type, employee_count, revenue_range */}
+            {/* REMOVED non-MVP fields: Address Section */}
+            {/* REMOVED non-MVP fields: Contact Section */}
+            {/* REMOVED non-MVP fields: services, certifications, tags */}
+            {/* REMOVED non-MVP fields: social_media_links */}
           </dl>
         </div>
       </div>

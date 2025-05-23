@@ -77,9 +77,49 @@ export function useMessages(currentUserId: string | undefined) {
     }
   }, [currentUserId, supabase])
 
+  const loadConversationMessages = useCallback(async (partnerId: string, partnerType: 'user' | 'company') => {
+    if (!currentUserId || !partnerId || !partnerType) {
+      setCurrentMessages([]);
+      return;
+    }
+    setIsLoadingMessages(true);
+    setCurrentOpenPartner({ id: partnerId, type: partnerType });
+    let formattedMessages: MessageView[] = [];
+    try {
+      const { data, error } = await supabase
+        .rpc('get_messages_for_conversation', {
+          p_partner_id: partnerId,
+          p_partner_type: partnerType,
+          p_page_number: 1,
+          p_page_size: 20
+        });
+
+      if (error) {
+        console.error('Error loading messages:', error.message);
+        setCurrentMessages([]);
+      } else {
+        const rawMessages = (data as any[]) || [];
+        formattedMessages = rawMessages.map(msg => ({
+          ...msg,
+          is_sent_by_current_user: msg.is_sent_by_current_user_context
+        }));
+        setCurrentMessages(formattedMessages);
+      }
+
+      if (formattedMessages && formattedMessages.length > 0) {
+        await fetchConversations();
+      }
+    } catch (catchError) {
+      console.error('Unexpected error in loadConversationMessages:', catchError);
+      setCurrentMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [currentUserId, supabase, fetchConversations]);
+
   useEffect(() => {
-    fetchConversations()
-  }, [fetchConversations])
+    fetchConversations();
+  }, [fetchConversations]);
 
   useEffect(() => {
     if (!currentUserId) return
@@ -138,41 +178,7 @@ export function useMessages(currentUserId: string | undefined) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [currentUserId, supabase, fetchConversations, currentMessages, currentOpenPartner])
-
-  const loadConversationMessages = useCallback(async (partnerId: string, partnerType: 'user' | 'company') => {
-    if (!currentUserId || !partnerId || !partnerType) {
-      setCurrentMessages([])
-      return
-    }
-    setIsLoadingMessages(true)
-    setCurrentOpenPartner({ id: partnerId, type: partnerType });
-    try {
-      const { data, error } = await supabase
-        .rpc('get_messages_for_conversation', {
-          p_partner_id: partnerId,
-          p_partner_type: partnerType,
-          p_page_number: 1,
-          p_page_size: 20
-        })
-
-      if (error) {
-        console.error('Error loading messages:', error.message)
-        setCurrentMessages([])
-      } else {
-        setCurrentMessages((data as MessageView[]) || [])
-      }
-
-      if (data && (data as MessageView[]).length > 0) {
-        await fetchConversations()
-      }
-    } catch (catchError) {
-      console.error('Unexpected error in loadConversationMessages:', catchError)
-      setCurrentMessages([])
-    } finally {
-      setIsLoadingMessages(false)
-    }
-  }, [currentUserId, supabase, fetchConversations])
+  }, [currentUserId, supabase, fetchConversations, currentMessages, currentOpenPartner, loadConversationMessages])
 
   const sendMessage = async (receiverId: string, content: string, actingAsCompanyId?: string | null, targetIsCompany?: boolean) => {
     if (!currentUserId || !receiverId || !content.trim()) {

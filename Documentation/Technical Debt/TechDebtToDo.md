@@ -5,11 +5,11 @@
 ### 1.1. Company User Removal
 - **Debt**: Owners/Admins cannot remove other users (MEMBER, VIEWER, other ADMINs) from their company via RLS. The current DELETE RLS only allows users to remove *themselves* (if not an owner).
 - **Action**: Implement a new RLS `DELETE` policy for `public.company_users`.
-    - Policy Name: `"Company admins can remove users from their company"`
-    - Policy Logic: `USING (EXISTS (SELECT 1 FROM public.company_users cu_admin WHERE cu_admin.company_id = public.company_users.company_id AND cu_admin.user_id = auth.uid() AND cu_admin.role IN ('OWNER', 'ADMIN')) AND public.company_users.user_id <> auth.uid() AND public.company_users.role <> 'OWNER')`
-    - This policy should prevent an OWNER from being removed by another ADMIN.
-    - The existing trigger `internal.validate_company_user_role_update` (or a new one) must also ensure the last OWNER cannot be removed (though this policy targets non-owners, a belt-and-suspenders check is good).
-- **File(s) to create/modify**: New migration file for `public.company_users` RLS.
+- **Resolution**: **RESOLVED**. 
+    - The RLS policy `"Company admins can remove users from their company"` was implemented in `supabase/migrations/20250612000000_add_rls_company_admin_remove_users.sql`. 
+    - This policy allows company OWNERS or ADMINS to remove other non-OWNER users from their company.
+    - Existing RLS policies and triggers also prevent an OWNER from being removed or demoted inappropriately, addressing the concern about the last owner.
+- **File(s) to create/modify**: None needed. `20250612000000_add_rls_company_admin_remove_users.sql` already exists.
 
 ### 1.2. N+1 Queries in Connection RPCs
 - **Debt**:
@@ -51,36 +51,63 @@
 - **File(s) to create/modify**: `20250612000007_add_updated_at_to_messages.sql`.
 
 ### 2.4. Messaging Restrictions (`public.send_message`)
-- **Debt**: `public.send_message` RPC has a placeholder comment/check for whether users should be connected to message each other.
+- **Debt**: `public.send_message` RPC needs to enforce messaging rules based on user/company status and connections, as per Platform Interaction Model.
 - **Action**:
-    1. Decide product-wise if messaging should be restricted (e.g., only to connected users).
-    2. If so, implement an efficient helper function like `internal.are_users_connected(user1_id UUID, user2_id UUID) BOOLEAN`.
-    3. Integrate this check into `public.send_message`.
-- **File(s) to create/modify**: Migration file for `internal.are_users_connected` (if created) and `public.send_message` RPC.
+    1. Implement `internal.are_users_connected` for U2U messages. **(RESOLVED - `supabase/migrations/20250612000008_create_are_users_connected_function.sql`)**
+    2. Update `public.send_message` to use this and other rules from Platform Interaction Model. **(PARTIALLY RESOLVED - `supabase/migrations/20250612000011_update_send_message_for_platform_interaction_model.sql` implements most rules.)**
+- **Outstanding Issues & Refinements**:
+    - **Company-to-Company (C2C) Verification**: The current `send_message` RPC allows C2C messages even if one/both companies are not verified, contrary to its comment (IS '...Company->Company (requires both to be verified)...').
+    - **Action**: Update `public.send_message` to strictly enforce that both companies must be TIER1_VERIFIED or TIER2_FULLY_VERIFIED for C2C messaging.
+    - **User-to-Company (U2C) Openness**: Currently broadly allowed. Review if `PlatformInteractionModel.md` suggests stricter rules (e.g., based on company verification or user trust level).
+- **File(s) to create/modify**: New migration for `public.send_message` if C2C rule is tightened (e.g., `supabase/migrations/20250613000006_update_send_message_c2c_verification.sql`). Review of U2C rules against model.
 
 ### 2.5. `public.mark_messages_as_read` Security Context
 - **Debt**: RPC uses `SECURITY DEFINER`. This bypasses the `messages` table's UPDATE RLS (`receiver_id = auth.uid() AND is_system_message = false`). If the RLS is the source of truth for this permission, the RPC should be `SECURITY INVOKER`.
 - **Action**: Confirm intended behavior. If RLS should govern, change RPC to `SECURITY INVOKER`.
-- **File(s) to create/modify**: Migration file for `public.mark_messages_as_read` RPC.
+- **Resolution**: **RESOLVED**. 
+    - The RLS UPDATE policy on `public.messages` ("Users can mark their received messages as read") was updated in `supabase/migrations/20250613000004_update_messages_rls_mark_as_read.sql` to have a corrected `WITH CHECK (auth.uid() = receiver_id AND is_system_message = FALSE)` clause, ensuring users can only update their own non-system messages.
+    - The RPC `public.mark_messages_as_read` was changed to `SECURITY INVOKER` in `supabase/migrations/20250613000005_update_mark_messages_read_rpc_security.sql`, so it now operates under the RLS policy.
+- **File(s) to create/modify**: `supabase/migrations/20250613000004_update_messages_rls_mark_as_read.sql`, `supabase/migrations/20250613000005_update_mark_messages_read_rpc_security.sql`.
 
 ### 2.6. System Notification Creation RLS
 - **Debt**: RLS for `public.user_notifications` INSERT (`"System can create notifications"`) uses `internal.is_system_process()`, which may not be defined or robustly implemented.
 - **Action**: Clarify and implement a secure way for system processes/triggers to create notifications. Options:
     - Define `internal.is_system_process()` (e.g., checks for a special system role).
     - Ensure all notification-creating contexts (triggers, specific RPCs) run as `SECURITY DEFINER` from trusted, admin-controlled code.
-- **File(s) to create/modify**: Potentially `internal.is_system_process()` function, or review/updates to notification creation logic/triggers.
+- **Resolution**: **LARGELY ADDRESSED**. 
+    - No explicit INSERT RLS policy named `"System can create notifications"` or using `internal.is_system_process()` was found on `public.user_notifications`. 
+    - Authenticated users without special privileges cannot directly insert into `public.user_notifications` due to RLS being enabled and lack of a general INSERT policy.
+    - System-generated notifications (e.g., from admin actions) are created within `SECURITY DEFINER` RPCs (e.g., `public.admin_warn_user`, `public.admin_remove_post`). These RPCs correctly perform admin checks using `internal.is_admin()` or `internal.ensure_admin()` before inserting notifications.
+    - This approach confines privileged notification creation to specific, auditable code paths, which is secure.
+    - Future system notification mechanisms should continue this pattern or use carefully designed `SECURITY DEFINER` triggers/functions if RLS bypass is needed.
+- **File(s) to create/modify**: None needed at this time. Documentation updated.
 
 ### 2.7. `profile_status_enum` Values for 'warned', 'banned'
 - **Debt**: Admin RPCs set profile status to 'warned', 'banned_temporarily', 'banned_permanently'. Need to ensure these values exist in the `public.profile_status_enum`.
-- **Action**: Check the definition of `public.profile_status_enum` (likely in `supabase/migrations/20240508000001_create_profiles.sql` or an update to it). If missing, add these values via an `ALTER TYPE ... ADD VALUE` migration.
-- **File(s) to create/modify**: New migration file for `public.profile_status_enum` if values need to be added.
+- **Action**: Check the definition of `public.profile_status_enum`. If missing, add these values via an `ALTER TYPE ... ADD VALUE` migration.
+- **Resolution**: **RESOLVED**. The enum `public.profile_status_enum` (defined in `supabase/migrations/20250526000000_add_moderation_features.sql`) already includes 'active', 'warned', 'banned_temporarily', and 'banned_permanently'.
+- **File(s) to create/modify**: None needed.
 
 ## 3. Systematic Reviews (Broader Initiatives)
 
 ### 3.1. Comprehensive Trigger Review
 - **Debt**: Potential for incorrect logic, performance issues, or security vulnerabilities in existing triggers, especially `SECURITY DEFINER` triggers.
 - **Action**: Perform a dedicated review of ALL database triggers. Document findings and create migrations for any necessary changes.
-- **File(s) to create/modify**: Potentially multiple migration files for trigger updates.
+- **Status**: **IN PROGRESS / PARTIALLY ADDRESSED (Initial Review Complete)**
+    - **Review Performed (2025-06-13)**:
+        - **`updated_at` Triggers**: Multiple triggers using functions like `public.handle_updated_at()`, `internal.set_updated_at_on_messages()`, etc. All found to be standard, simple, and low risk. Minor redundancy in function definitions noted but not functionally problematic.
+        - **`internal.validate_company_user_role_update`** (on `public.company_users`): Logic for preventing invalid owner demotions seems correct. `SECURITY DEFINER` usage acceptable for validation read. Low risk.
+        - **`internal.assign_company_owner_role`** (on `public.companies`): Automatically assigns 'OWNER' role. `SECURITY DEFINER` necessary and appropriately used. Low risk.
+        - **`internal.prevent_owner_update_restricted_company_fields`** (on `public.companies`): Prevents owners from updating `verification_status`, `admin_notes`. Logic sound, `SECURITY INVOKER` with `current_user` check for bypass is good. Low risk.
+        - **`public.send_welcome_message_to_new_user`** (on `public.profiles`): `SECURITY DEFINER` appropriate.
+            - **Issue Found**: Used hardcoded admin email.
+            - **Resolution**: Updated in `supabase/migrations/20250613000007_update_welcome_message_trigger_fn.sql` to use `internal.get_app_config('admin_email')` and mark message as `is_system_message`.
+        - **`public.create_quote_revision`** (on `public.quotes`): Standard versioning trigger. `SECURITY INVOKER`. Low risk.
+        - **Trust Level Triggers** (various `internal.trigger_update_user_trust_level_for_*()` calling `internal.update_user_trust_level` which uses `internal.calculate_user_trust_score_points`):
+            - Most complex set of triggers. `SECURITY DEFINER` used by individual trigger functions.
+            - **Risk**: Medium to High. Medium due to `SECURITY DEFINER` on functions with complex cross-table reads. High from a performance/correctness perspective of `calculate_user_trust_score_points` if not optimized or if logic is flawed.
+            - **Action Needed**: Requires thorough performance testing and validation of point calculation logic in `calculate_user_trust_score_points`. (Ongoing / Future Task).
+- **File(s) to create/modify**: `supabase/migrations/20250613000007_update_welcome_message_trigger_fn.sql` (created and applied for welcome message fix).
 
 ### 3.2. Indexing Strategy Review & Implementation
 - **Debt**: Missing or suboptimal indexes can lead to poor database performance.

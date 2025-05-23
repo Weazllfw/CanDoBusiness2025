@@ -20,17 +20,14 @@ interface EnrichedCompanyRequest extends CompanyConnectionRow {
   other_company_profile: Pick<CompanyProfile, 'id' | 'name' | 'avatar_url'> | null;
 }
 
-// For current connections from get_company_network_details
+// For current connections from get_company_connections RPC
 interface CurrentCompanyConnection {
-  id: string; // target_company_id
-  name: string;
-  avatar_url?: string | null;
-  industry?: string | null;
-  // We don't need connection_status here as we will filter for ACCEPTED before display
+  connected_company_id: string;
+  name: string | null;
+  avatar_url: string | null;
+  industry: string | null;
+  connected_at: string; 
 }
-
-type CompanyNetworkDetailRow = Database['public']['Functions']['get_company_network_details']['Returns'][number] | any;
-
 
 export default function CompanyConnectionsManagementPage() {
   const supabase = createClientComponentClient<Database>();
@@ -64,19 +61,19 @@ export default function CompanyConnectionsManagementPage() {
     }
 
     try {
-      const { data: isAdmin, error } = await (supabase.rpc as any)('check_if_user_is_company_admin', {
+      const { data: isAdminBool, error: adminCheckError } = await supabase.rpc('check_if_user_is_company_admin', {
         p_target_company_id: companyId as string,
         p_user_id_to_check: user.id,
       });
-      if (error) throw error;
-      if (!isAdmin) {
+      if (adminCheckError) throw adminCheckError;
+      if (!isAdminBool) {
         setError('You do not have permission to manage this company\'s connections.');
         setIsAdmin(false);
         setIsLoading(false);
         // Consider redirecting: router.push('/dashboard');
         return;
       }
-      setIsAdmin(true);
+      setIsAdmin(isAdminBool);
     } catch (err: any) {
       console.error('Error checking admin status:', err);
       setError(err.message || 'Error verifying permissions.');
@@ -85,7 +82,7 @@ export default function CompanyConnectionsManagementPage() {
     }
   }, [supabase, router, companyId]);
 
-  const enrichRequestsWithCompanyProfiles = async (
+  const enrichRequestsWithCompanyProfiles = useCallback(async (
     requests: CompanyConnectionRow[],
     otherCompanyIdField: 'requester_company_id' | 'addressee_company_id'
   ): Promise<EnrichedCompanyRequest[]> => {
@@ -108,7 +105,7 @@ export default function CompanyConnectionsManagementPage() {
       ...req,
       other_company_profile: req[otherCompanyIdField] ? profilesMap.get(req[otherCompanyIdField]!) || null : null
     }));
-  };
+  }, [supabase]);
 
 
   const fetchDataForTab = useCallback(async () => {
@@ -132,18 +129,18 @@ export default function CompanyConnectionsManagementPage() {
         const enriched = await enrichRequestsWithCompanyProfiles(data || [], 'addressee_company_id');
         setSentRequests(enriched);
       } else if (activeTab === 'current') {
-        const { data, error: rpcError } = await supabase.rpc('get_company_network_details', {
-           p_acting_company_id: companyId 
-        } as any ); // Using 'as any' due to potential stale types for params
+        const { data, error: rpcError } = await supabase.rpc('get_company_connections', {
+           p_company_id: companyId 
+        }); 
         if (rpcError) throw rpcError;
         
-        const rpcData = data as CompanyNetworkDetailRow[] || [];
-        const acceptedConnections = rpcData.filter(c => c.connection_status_with_acting_company === 'ACCEPTED');
-        const mappedConnections: CurrentCompanyConnection[] = acceptedConnections.map(c => ({
-            id: c.target_company_id,
-            name: c.target_company_name || 'Unnamed Company',
-            avatar_url: c.target_company_avatar_url,
-            industry: c.target_company_industry,
+        const rpcData = data || [];
+        const mappedConnections: CurrentCompanyConnection[] = rpcData.map(c => ({
+            connected_company_id: c.connected_company_id,
+            name: c.name || 'Unnamed Company',
+            avatar_url: c.avatar_url,
+            industry: c.industry,
+            connected_at: c.connected_at
         }));
         setCurrentConnections(mappedConnections);
       }
@@ -156,7 +153,7 @@ export default function CompanyConnectionsManagementPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, companyId, isAdmin, currentUser, activeTab]);
+  }, [supabase, companyId, isAdmin, currentUser, activeTab, enrichRequestsWithCompanyProfiles]);
 
   useEffect(() => {
     fetchCurrentUserAndAdminStatus();
@@ -193,14 +190,14 @@ export default function CompanyConnectionsManagementPage() {
             targetCompanyIdForButton = (type === 'incoming' ? req.requester_company_id : req.addressee_company_id) || '';
           } else { // current
             const conn = item as CurrentCompanyConnection;
-            otherCompanyProfile = { id: conn.id, name: conn.name, avatar_url: conn.avatar_url || null };
-            targetCompanyIdForButton = conn.id;
+            otherCompanyProfile = { id: conn.connected_company_id, name: conn.name, avatar_url: conn.avatar_url };
+            targetCompanyIdForButton = conn.connected_company_id;
           }
           
           if (!targetCompanyIdForButton) return null; // Should not happen if data is correct
 
           return (
-            <li key={(item as any).id} className="flex items-center justify-between p-4 bg-white shadow rounded-lg">
+            <li key={type === 'current' ? (item as CurrentCompanyConnection).connected_company_id : (item as EnrichedCompanyRequest).id} className="flex items-center justify-between p-4 bg-white shadow rounded-lg">
               <Link href={`/company/${targetCompanyIdForButton}`} className="flex items-center space-x-3 group min-w-0">
                 {otherCompanyProfile?.avatar_url ? (
                   <Image src={otherCompanyProfile.avatar_url} alt={otherCompanyProfile.name || 'Company'} width={48} height={48} className="rounded-full object-cover flex-shrink-0" />

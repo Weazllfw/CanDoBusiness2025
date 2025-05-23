@@ -1,18 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 
 interface User {
   id: string
-  email: string
-  name: string
-  avatar_url?: string
+  email: string | null
+  name: string | null
+  avatar_url?: string | null
 }
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabase = createClientComponentClient<Database>()
+
+  const loadUserProfile = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) throw error
+
+      setUser(data)
+    } catch (error) {
+      console.error('Error loading user profile:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [supabase])
 
   useEffect(() => {
     // Get initial session
@@ -37,25 +55,7 @@ export function useAuth() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase])
-
-  const loadUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error) throw error
-
-      setUser(data)
-    } catch (error) {
-      console.error('Error loading user profile:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  }, [supabase, loadUserProfile])
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()

@@ -1,5 +1,5 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/supabase';
+import type { Database, Json } from '@/types/supabase';
 
 export type AnalyticsEventType =
   | 'post_view'
@@ -70,7 +70,7 @@ async function trackEvent(event: Omit<AnalyticsEvent, 'timestamp'>): Promise<voi
     const { error: insertError } = await supabase.from('analytics_events').insert({
       user_id: event.userId,
       event_type: event.eventType,
-      event_data: event.metadata as any, // Cast to any if JSONB is flexible
+      event_data: event.metadata as Json,
     });
 
     if (insertError) {

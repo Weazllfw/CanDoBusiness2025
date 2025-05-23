@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 // Attempt to use the centrally defined AdminCompanyDetails
@@ -18,43 +18,11 @@ import {
   EyeIcon 
 } from '@heroicons/react/24/outline'
 
-// Local fallback AdminCompanyDetails interface definition
-// This should ideally match or extend a base CompanyDbRow from supabase types
-// and align with the actual structure returned by admin_get_all_companies_with_owner_info RPC
-export interface AdminCompanyDetails {
-  id: string; // Primary key, mapped from company_id
-  name: string; // Company name, mapped from company_name
-  owner_id?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  company_description?: string | null;
-  company_website?: string | null;
-  avatar_url?: string | null;
-  verification_status?: string | null;
-  admin_notes?: string | null;
-  street_address?: string | null;
-  city?: string | null;
-  province?: string | null;
-  postal_code?: string | null;
-  major_metropolitan_area?: string | null;
-  other_metropolitan_area_specify?: string | null; 
-  contact_person_name?: string | null;
-  contact_person_email?: string | null;
-  contact_person_phone?: string | null;
-  services?: string[] | null;
-  self_attestation_completed?: boolean | null;
-  business_number?: string | null;
-  public_presence_links?: string[] | null;
-  // Admin specific fields from join / RPC structure
-  owner_email?: string | null;
-  profile_name?: string | null;
-  // Tier 2 fields (ensure these are included in the type used)
-  tier2_document_type?: string | null;
-  tier2_document_filename?: string | null;
-  tier2_document_storage_path?: string | null;
-  // Raw fields from RPC before mapping (if needed, but prefer mapped ones)
-  company_id?: string; 
-  company_name?: string;
+type AdminCompanyDetailsRpcRow = Database['public']['CompositeTypes']['admin_company_details'];
+
+export interface AdminCompanyDetails extends AdminCompanyDetailsRpcRow {
+  id: string; // Explicitly mapped from company_id in our transformation
+  name: string; // Explicitly mapped from company_name in our transformation
 }
 
 const VERIFICATION_STATUS_OPTIONS = [
@@ -81,20 +49,20 @@ export default function CompanyVerificationTable() {
     admin_notes: string;
   }>({ verification_status: '', admin_notes: '' });
 
-  const fetchCompaniesForAdmin = async () => {
+  const fetchCompaniesForAdmin = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
       const { data, error: rpcError } = await supabase.rpc('admin_get_all_companies_with_owner_info')
       if (rpcError) throw rpcError
       
-      const transformedData = (data as any[])?.map(item => ({
-        ...item, // Spread all properties from the RPC result
-        id: item.company_id, // Map company_id to id
-        name: item.company_name, // Map company_name to name
-        // Ensure all other fields expected by AdminCompanyDetails are present or mapped
-      })) as AdminCompanyDetails[];
-      setCompanies(transformedData || [])
+      const rpcData = data || [];
+      const transformedData: AdminCompanyDetails[] = rpcData.map(item => ({
+        ...item,
+        id: item.company_id!, 
+        name: item.company_name!,
+      }));
+      setCompanies(transformedData)
     } catch (e: any) {
       console.error('Error fetching companies for admin:', e)
       setError(e.message || 'Failed to fetch companies.')
@@ -102,11 +70,11 @@ export default function CompanyVerificationTable() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [supabase])
 
   useEffect(() => {
     fetchCompaniesForAdmin()
-  }, [])
+  }, [fetchCompaniesForAdmin])
 
   const handleDownloadDocument = async (filePath: string | null | undefined, filename: string | null | undefined) => {
     if (!filePath || !filename) {
@@ -170,10 +138,11 @@ export default function CompanyVerificationTable() {
               c.id === companyId
                 ? { 
                     ...c, 
-                    verification_status: (updatedCompanyRow as any).verification_status, 
-                    admin_notes: (updatedCompanyRow as any).admin_notes,
-                    ...( (updatedCompanyRow as any).verification_status === 'TIER2_FULLY_VERIFIED' || 
-                        (updatedCompanyRow as any).verification_status === 'TIER2_REJECTED' 
+                    verification_status: updatedCompanyRow.verification_status, 
+                    admin_notes: updatedCompanyRow.admin_notes,
+                    ...( (updatedCompanyRow.verification_status === 'TIER2_FULLY_VERIFIED' || 
+                        updatedCompanyRow.verification_status === 'TIER2_REJECTED' 
+                        ) && c.tier2_document_type
                         ? { 
                             tier2_document_type: null,
                             tier2_document_filename: null,

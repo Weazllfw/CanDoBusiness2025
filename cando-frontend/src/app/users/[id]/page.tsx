@@ -6,18 +6,14 @@ import { useParams } from 'next/navigation'; // To get [id] from URL
 import type { Database } from '@/types/supabase';
 import type { User } from '@supabase/supabase-js';
 import UserConnectButton from '@/components/connections/UserConnectButton'; // Import the button
-import { ShieldCheckIcon } from '@heroicons/react/24/solid'; // For verification badge
+import Image from 'next/image'; // Added import for Next/Image
 
-// Define the expected structure for a profile (subset of profiles table)
-// This should align with your actual profiles table definition
+// Updated Profile type for MVP display
 type Profile = {
   id: string;
   name: string | null;
-  email: string | null;
   avatar_url: string | null;
-  trust_level?: 'NEW' | 'BASIC' | 'ESTABLISHED' | 'VERIFIED_CONTRIBUTOR' | null; // Added
-  is_verified?: boolean; // Added
-  // Add other fields you want to display
+  // REMOVED email and status from this page's Profile type
 };
 
 export default function UserProfilePage() {
@@ -52,7 +48,7 @@ export default function UserProfilePage() {
       try {
         const { data, error: profileError } = await supabase
           .from('profiles')
-          .select('id, name, email, avatar_url, trust_level, is_verified') // Adjusted fields
+          .select('id, name, avatar_url') // UPDATED: Select only MVP fields
           .eq('id', targetUserId)
           .single();
 
@@ -63,7 +59,7 @@ export default function UserProfilePage() {
             throw profileError;
           }
         }
-        setProfile(data as Profile | null);
+        setProfile(data);
       } catch (err: any) {
         console.error('Error fetching profile:', err);
         setError(err.message || 'Failed to fetch profile.');
@@ -92,25 +88,24 @@ export default function UserProfilePage() {
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex items-center space-x-4">
           {profile.avatar_url && (
-            <img 
+            <Image 
               src={profile.avatar_url} 
               alt={profile.name || 'User avatar'} 
+              width={96}
+              height={96}
               className="h-24 w-24 rounded-full object-cover"
             />
           )}
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-2xl font-bold">{profile.name || 'N/A'}</h1>
-              {profile.is_verified && (
-                <ShieldCheckIcon className="h-6 w-6 text-blue-500" title="Verified User" />
-              )}
             </div>
-            <p className="text-gray-600">{profile.email || 'No email provided'}</p>
-            {profile.trust_level && (
-              <span className={`mt-1 text-xs inline-block px-2 py-0.5 rounded-full ${ profile.trust_level === 'VERIFIED_CONTRIBUTOR' ? 'bg-green-100 text-green-700' : profile.trust_level === 'ESTABLISHED' ? 'bg-blue-100 text-blue-700' : profile.trust_level === 'BASIC' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700' }`}>
-                Trust Level: {profile.trust_level.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
-              </span>
-            )}
+            {/* REMOVED email display */}
+            {/* <p className="text-gray-600">{profile.email || 'No email provided'}</p> */}
+            {/* REMOVED status display */}
+            {/* {profile.status && (
+              <p className="text-sm text-gray-500">Status: {profile.status}</p>
+            )} */}
           </div>
         </div>
         

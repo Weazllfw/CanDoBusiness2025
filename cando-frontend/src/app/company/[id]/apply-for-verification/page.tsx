@@ -1,5 +1,3 @@
-/// <reference types="@react-three/fiber" />
-
 'use client'
 
 import { useEffect, useState } from 'react';
@@ -64,7 +62,7 @@ export default function ApplyForVerificationPage() {
       company_id: companyId,
       self_attestation_completed: false,
       business_number: '',
-      public_presence_links: [],
+      public_presence_links: undefined,
     },
   });
 
@@ -89,7 +87,7 @@ export default function ApplyForVerificationPage() {
           company_id: data.id,
           self_attestation_completed: !!data.self_attestation_completed,
           business_number: data.business_number || '',
-          public_presence_links: data.public_presence_links || [],
+          public_presence_links: data.public_presence_links || undefined,
         });
         // Redirect if company is not eligible for Tier 1 application
         if (data.verification_status && !['UNVERIFIED', 'TIER1_REJECTED'].includes(data.verification_status)) {
@@ -190,7 +188,7 @@ export default function ApplyForVerificationPage() {
                             placeholder="Enter links (e.g., LinkedIn, Website) and press Enter..."
                             value={field.value?.map(val => ({ value: val, label: val })) || []}
                             onChange={(selectedOptions: MultiValue<{ value: string; label: string }>) => 
-                                field.onChange(selectedOptions ? selectedOptions.map((option: { value: string; label: string }) => option.value) : [])
+                                field.onChange((selectedOptions ? selectedOptions.map((option: { value: string; label: string }) => option.value) : []) as string[])
                             }
                             formatCreateLabel={(inputValue: string) => `Add link: "${inputValue}"...`}
                             instanceId="public-presence-links-verification-select"
@@ -203,7 +201,7 @@ export default function ApplyForVerificationPage() {
                         error && <p key={index} className="mt-1 text-sm text-red-500">{error.message}</p>
                 )}
                 {form.formState.errors.public_presence_links && !Array.isArray(form.formState.errors.public_presence_links) && (
-                     <p className="mt-1 text-sm text-red-500">{(form.formState.errors.public_presence_links as any).message || 'Invalid link format.'}</p>
+                     <p className="mt-1 text-sm text-red-500">{form.formState.errors.public_presence_links.message || 'Invalid link format.'}</p>
                 )}
                  <p className="mt-1 text-xs text-gray-500">Provide links to your company website, LinkedIn profile, or other public business pages. Each link must be a valid URL.</p>
             </div>

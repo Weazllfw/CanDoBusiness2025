@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { likePost, unlikePost } from '../../lib/posts'; // Adjusted path
+import { likePost, unlikePost } from '@/lib/posts'; // Corrected path
 
 interface LikeButtonProps {
   postId: string;

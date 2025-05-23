@@ -23,7 +23,7 @@ interface FlagStat {
 }
 
 // List of known admin emails (consider moving to environment variables for better security)
-const ADMIN_EMAILS = ['rmarshall@itmarshall.net', 'anotheradmin@example.com'];
+// const ADMIN_EMAILS = ['rmarshall@itmarshall.net', 'anotheradmin@example.com']; // To be replaced
 
 export default function AdminPage() {
   const supabase = createClientComponentClient<Database>()
@@ -39,14 +39,50 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdminStatusAndFetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
+      if (!session || !session.user) { // Ensure session and user exist
         router.push('/auth/login')
         return
       }
       setUser(session.user)
 
-      if (session.user?.email && ADMIN_EMAILS.includes(session.user.email)) {
-        setIsAdmin(true)
+      // TODO: Replace with a call to an RPC like `is_current_user_admin()`
+      // For now, we'll assume the user is admin if they reach this page.
+      // This needs to be secured properly with an RPC call.
+      // const { data: isAdminResult, error: adminCheckError } = await supabase.rpc('is_current_user_admin');
+      // if (adminCheckError || !isAdminResult) {
+      //  setIsAdmin(false);
+      //  router.push('/feed'); // Redirect to feed if not admin
+      //  setIsLoading(false);
+      //  return;
+      // }
+      // setIsAdmin(true);
+      
+      // For demonstration, let's tentatively set isAdmin to true if a session exists.
+      // THIS IS NOT SECURE and is a placeholder for the RPC call.
+      // if (session.user) { // Basic check, will be replaced by proper admin check
+      //     setIsAdmin(true);
+
+      // Call the RPC to check if the current user is an admin
+      try {
+        const { data: isAdminUser, error: adminCheckError } = await supabase.rpc('is_current_user_admin');
+        
+        if (adminCheckError) {
+          console.error('Error checking admin status:', adminCheckError);
+          setIsAdmin(false);
+          router.push('/feed'); // Redirect if error or not admin
+          setIsLoading(false);
+          return;
+        }
+
+        if (!isAdminUser) {
+          setIsAdmin(false);
+          router.push('/feed'); // Redirect if not admin
+          setIsLoading(false);
+          return;
+        }
+        
+        setIsAdmin(true); // User is admin, proceed to fetch admin-specific data
+
         // Fetch verification stats
         try {
           const { data: companyStatsData, error: companyStatsRpcError } = await supabase.rpc('get_company_verification_stats');
@@ -67,8 +103,10 @@ export default function AdminPage() {
           setFlagStatsError(e.message || 'Failed to load flag statistics.');
         }
 
-      } else {
-        router.push('/feed') // Redirect to feed if not admin
+      } catch (e) { // Catch errors from the admin check RPC itself or other setup issues
+        console.error('General error during admin check or data fetching:', e);
+        setIsAdmin(false);
+        router.push('/auth/login'); // Fallback redirect
       }
       setIsLoading(false)
     }
@@ -139,6 +177,17 @@ export default function AdminPage() {
         >
           Manage Flagged Content
           <ShieldExclamationIcon className="ml-3 -mr-1 h-5 w-5" aria-hidden="true" />
+        </Link>
+      </section>
+
+      {/* User Management Section */}
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-gray-700 mb-4">User Management</h2>
+        <Link href="/admin/users"
+          className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
+        >
+          Manage Users
+          <ArrowRightIcon className="ml-3 -mr-1 h-5 w-5" aria-hidden="true" />
         </Link>
       </section>
       

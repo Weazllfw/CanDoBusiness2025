@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 import { useRouter } from 'next/navigation'
-import { formatDistanceToNow, format } from 'date-fns'
+import { format } from 'date-fns/format'
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'
 import Link from 'next/link'
 
 type RFQ = Database['public']['Tables']['rfqs']['Row'] & {
@@ -35,12 +36,7 @@ export default function RFQDetailPage({ params }: RFQDetailPageProps) {
   const [userCompanyId, setUserCompanyId] = useState<string | null>(null)
   const supabase = createClientComponentClient<Database>()
 
-  useEffect(() => {
-    loadRFQ()
-    loadUserCompany()
-  }, [params.id])
-
-  const loadRFQ = async () => {
+  const loadRFQ = useCallback(async () => {
     try {
       setIsLoading(true)
       const { data: rfqData, error: rfqError } = await supabase
@@ -78,9 +74,9 @@ export default function RFQDetailPage({ params }: RFQDetailPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [supabase, params.id, router])
 
-  const loadUserCompany = async () => {
+  const loadUserCompany = useCallback(async () => {
     try {
       const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError || !session) return
@@ -96,7 +92,12 @@ export default function RFQDetailPage({ params }: RFQDetailPageProps) {
     } catch (error) {
       console.error('Error loading user company:', error)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    loadRFQ()
+    loadUserCompany()
+  }, [params.id, loadRFQ, loadUserCompany])
 
   const handleStatusChange = async (newStatus: 'open' | 'in_progress' | 'closed') => {
     try {
@@ -175,7 +176,7 @@ export default function RFQDetailPage({ params }: RFQDetailPageProps) {
               Posted by {rfq.companies.name}
             </div>
             <div className="mt-2 flex items-center text-sm text-gray-500">
-              {formatDistanceToNow(new Date(rfq.created_at), { addSuffix: true })}
+              {rfq.created_at ? formatDistanceToNow(new Date(rfq.created_at), { addSuffix: true }) : 'Date N/A'}
             </div>
             <div className="mt-2 flex items-center">
               <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${

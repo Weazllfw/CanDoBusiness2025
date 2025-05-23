@@ -104,7 +104,7 @@ export const addComment = async (
   // 2. Fetch the user profile
   const { data: profileData, error: profileError } = await supabase
     .from('profiles')
-    .select('id, name, avatar_url, email')
+    .select('id, name, avatar_url')
     .eq('id', commentData.user_id) // use commentData.user_id to fetch the profile
     .single();
 
@@ -145,21 +145,23 @@ export const fetchComments = async (postId: string) => {
 
   if (error) {
     console.error('Error fetching comments:', error);
+    return { data: [], error }; // Return empty array on error, but pass error object
   }
-  // Ensure data is an array, even if null/undefined is returned
-  // The RPC returns rows that include user_name, user_avatar_url, user_email directly,
-  // so we map them to a user_object for consistency if needed by the frontend component.
-  const formattedData = data?.map(comment => ({
-    ...comment,
-    user_object: {
-      id: comment.user_id, // The user_id from post_comments is the profile id
+
+  // Ensure data is an array. If RPC returns null for data, treat as empty.
+  const commentsArray = Array.isArray(data) ? data : [];
+
+  const formattedData = commentsArray.map(comment => ({
+    ...comment, // Spread all fields from the RPC: id, created_at, content, parent_comment_id, user_id, user_name, user_avatar_url, depth, sort_path, status
+    user_object: { // Create the nested user_object
+      id: comment.user_id,
       name: comment.user_name,
       avatar_url: comment.user_avatar_url,
-      email: comment.user_email
+      // email is not included as per RPC definition
     }
-  })) || [];
+  }));
 
-  return { data: formattedData, error }; 
+  return { data: formattedData, error: null }; // Return formatted data and null for error if successful
 };
 
 // TODO: Add function for creating a new post (if not handled directly in CreatePost.tsx)
